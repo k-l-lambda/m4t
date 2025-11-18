@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  seamless-m4t:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        HTTP_PROXY: http://host.docker.internal:1091
+        HTTPS_PROXY: http://host.docker.internal:1091
+    container_name: seamless-m4t-api
+    ports:
+      - "8000:8000"
+    environment:
+      - HTTP_PROXY=http://host.docker.internal:1091
+      - HTTPS_PROXY=http://host.docker.internal:1091
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
