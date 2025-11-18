@@ -51,6 +51,12 @@ class TextTranslationRequest(BaseModel):
     target_lang: str = Field(..., description="Target language code (e.g., 'cmn')")
 
 
+class TextToSpeechRequest(BaseModel):
+    """Request model for text-to-speech"""
+    text: str = Field(..., description="Input text to convert to speech", max_length=MAX_TEXT_LENGTH)
+    source_lang: str = Field(..., description="Language code for the speech (e.g., 'eng', 'cmn', 'jpn')")
+
+
 class TranslationResponse(BaseModel):
     """Response model for all translation tasks"""
     task: str
@@ -352,8 +358,40 @@ async def root():
             "s2st": "/v1/speech-to-speech-translation",
             "asr": "/v1/transcribe",
             "t2tt": "/v1/text-to-text-translation",
+            "tts": "/v1/text-to-speech",
         }
     }
+
+
+@app.post("/v1/text-to-speech")
+async def text_to_speech(request: TextToSpeechRequest):
+    """
+    Text-to-Speech (TTS)
+
+    Converts text into speech audio in the specified language.
+
+    Args:
+        text: Input text to convert to speech
+        source_lang: Language code (e.g., "eng", "cmn", "jpn")
+
+    Returns:
+        JSON with generated speech audio and metadata
+    """
+    try:
+        model = get_model()
+        result = model.text_to_speech(
+            text=request.text,
+            language=request.source_lang
+        )
+
+        # Convert numpy array to list for JSON serialization
+        result["output_audio"] = result["output_audio"].tolist()
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error in TTS: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==================== Server Startup ====================

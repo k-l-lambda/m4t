@@ -324,10 +324,10 @@ class SeamlessM4TInference:
         start_time = time.time()
 
         try:
-            # Load S2T model (can also do T2TT)
-            self._load_s2t_model()
+            # Load unified model (needed for T2TT)
+            self._load_unified_model()
 
-            # Process text
+            # Process text - processor handles text input
             text_inputs = self.processor(
                 text=text,
                 src_lang=source_lang,
@@ -339,17 +339,24 @@ class SeamlessM4TInference:
 
             # Generate translation
             with torch.no_grad():
-                output_tokens = self.model_s2t.generate(
+                output = self.model_unified.generate(
                     **text_inputs,
                     tgt_lang=target_lang,
                     generate_speech=False
                 )
 
-            # Decode output
-            translated_text = self.processor.decode(
-                output_tokens[0].tolist(),
-                skip_special_tokens=True
-            )
+            # Decode output - access sequences attribute
+            if hasattr(output, 'sequences'):
+                translated_text = self.processor.batch_decode(
+                    output.sequences,
+                    skip_special_tokens=True
+                )[0]
+            else:
+                # Fallback if output structure is different
+                translated_text = self.processor.batch_decode(
+                    [output[0]],
+                    skip_special_tokens=True
+                )[0]
 
             processing_time = time.time() - start_time
 
@@ -364,6 +371,63 @@ class SeamlessM4TInference:
 
         except Exception as e:
             logger.error(f"Error in T2TT: {e}")
+            raise
+
+    def text_to_speech(
+        self,
+        text: str,
+        language: str
+    ) -> Dict:
+        """
+        Text-to-Speech (TTS)
+
+        Args:
+            text: Input text
+            language: Language code for the speech output
+
+        Returns:
+            Dict with speech audio and metadata
+        """
+        start_time = time.time()
+
+        try:
+            # Load unified model (needed for TTS)
+            self._load_unified_model()
+
+            # Process text
+            text_inputs = self.processor(
+                text=text,
+                src_lang=language,
+                return_tensors="pt"
+            )
+
+            # Move to device
+            text_inputs = {k: v.to(self.device) for k, v in text_inputs.items()}
+
+            # Generate speech
+            with torch.no_grad():
+                output = self.model_unified.generate(
+                    **text_inputs,
+                    tgt_lang=language,
+                    generate_speech=True
+                )
+
+            # Extract audio
+            audio_samples = output[0].cpu().numpy()
+
+            processing_time = time.time() - start_time
+
+            return {
+                "task": "tts",
+                "language": language,
+                "input_text": text,
+                "output_audio": audio_samples,
+                "output_sample_rate": self.model_unified.config.sampling_rate,
+                "processing_time": round(processing_time, 2),
+            }
+
+        except Exception as e:
+            logger.error(f"Error in TTS: {e}")
             raise
 
 

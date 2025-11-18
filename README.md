@@ -4,11 +4,12 @@ Multilingual speech and text translation API using Meta's **SeamlessM4T v2** mod
 
 ## Features
 
-- **4 Translation Tasks:**
+- **5 Translation & Speech Tasks:**
   - 🎤→📝 **S2TT**: Speech-to-Text Translation (e.g., Japanese audio → Chinese text)
   - 🎤→🔊 **S2ST**: Speech-to-Speech Translation (e.g., Japanese audio → Chinese audio)
   - 🎤→📝 **ASR**: Automatic Speech Recognition (e.g., Japanese audio → Japanese text)
-  - 📝→📝 **T2TT**: Text-to-Text Translation (e.g., Japanese text → Chinese text)
+  - 📝→📝 **T2TT**: Text-to-Text Translation (e.g., English text → Chinese text)
+  - 📝→🔊 **TTS**: Text-to-Speech (e.g., Chinese text → Chinese audio)
 
 - **Wide Language Support:** 101 languages for speech, 96 for text
 - **High Quality:** 2.3B parameter model with state-of-the-art translation quality
@@ -60,6 +61,7 @@ docker run -d --gpus '"device=0"' -p 8000:8000 \
 | `/v1/speech-to-speech-translation` | POST | Translate speech to speech (S2ST) |
 | `/v1/transcribe` | POST | Transcribe speech (ASR) |
 | `/v1/text-to-text-translation` | POST | Translate text to text (T2TT) |
+| `/v1/text-to-speech` | POST | Convert text to speech (TTS) |
 
 ## Usage Examples
 
@@ -134,17 +136,64 @@ curl -X POST "http://localhost:8000/v1/speech-to-speech-translation" \
   -F "response_format=json"
 ```
 
+### 5. Text-to-Speech (TTS)
+
+```bash
+curl -X POST "http://localhost:8000/v1/text-to-speech" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "你好，今天天气很好",
+    "source_lang": "cmn"
+  }'
+```
+
+**Response:**
+```json
+{
+  "task": "tts",
+  "language": "cmn",
+  "input_text": "你好，今天天气很好",
+  "output_audio": [0.001, -0.002, 0.003, ...],
+  "output_sample_rate": 16000,
+  "processing_time": 9.11
+}
+```
+
+**Save audio to file (Python):**
+```python
+import requests
+import numpy as np
+import soundfile as sf
+
+response = requests.post(
+    "http://localhost:8000/v1/text-to-speech",
+    json={
+        "text": "Hello, how are you today?",
+        "source_lang": "eng"
+    }
+)
+
+result = response.json()
+audio_array = np.array(result['output_audio'], dtype=np.float32)
+sample_rate = result['output_sample_rate']
+
+# Save to WAV file
+sf.write('output_speech.wav', audio_array, sample_rate)
+```
+
 ### Python Client Example
 
 ```python
 import requests
+import numpy as np
+import soundfile as sf
 
 # Text translation
 response = requests.post(
     "http://localhost:8000/v1/text-to-text-translation",
     json={
-        "text": "こんにちは",
-        "source_lang": "jpn",
+        "text": "Hello",
+        "source_lang": "eng",
         "target_lang": "cmn"
     }
 )
@@ -158,7 +207,21 @@ with open("audio.wav", "rb") as f:
         data={"target_lang": "cmn", "source_lang": "jpn"}
     )
 print(response.json()["output_text"])
+
+# Text-to-Speech
+response = requests.post(
+    "http://localhost:8000/v1/text-to-speech",
+    json={
+        "text": "你好，今天天气很好",
+        "source_lang": "cmn"
+    }
+)
+result = response.json()
+audio_array = np.array(result['output_audio'], dtype=np.float32)
+sf.write('chinese_speech.wav', audio_array, result['output_sample_rate'])
 ```
+
+**Full example script:** See `tts_example.py` for complete TTS usage examples.
 
 ## Supported Languages
 
@@ -269,6 +332,7 @@ Typical processing times on NVIDIA H20 GPU:
 | Task | Duration | Processing Time | Throughput |
 |------|----------|-----------------|------------|
 | T2TT | - | 0.3-0.5s | ~100 requests/min |
+| TTS | - | 8-10s | ~6-8 requests/min |
 | S2TT | 5s audio | 1-2s | ~30 audio files/min |
 | ASR | 5s audio | 1-2s | ~30 audio files/min |
 | S2ST | 5s audio | 3-5s | ~15 audio files/min |
@@ -286,6 +350,8 @@ m4t/
 ├── start_dev.sh          # Development startup script
 ├── start_docker.sh       # Docker startup script
 ├── test_api.py           # API test suite
+├── tts_example.py        # Text-to-Speech examples
+├── commands.local.sh     # Quick test commands
 ├── README.md             # This file
 └── examples/             # Example files
     └── test_audio.wav    # Test audio file
