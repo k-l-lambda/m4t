@@ -96,8 +96,15 @@ class SeamlessM4TInference:
         """
         try:
             if isinstance(audio_data, bytes):
-                # Load audio from bytes
-                audio_tensor, sr = torchaudio.load(io.BytesIO(audio_data))
+                # Load audio from bytes using soundfile instead of torchaudio
+                # to avoid TorchCodec requirement in torchaudio 2.9+
+                import soundfile as sf
+                audio_array, sr = sf.read(io.BytesIO(audio_data), dtype='float32')
+                # Convert to torch tensor
+                audio_tensor = torch.from_numpy(audio_array)
+                # Ensure it's 2D (channels, samples)
+                if audio_tensor.dim() == 1:
+                    audio_tensor = audio_tensor.unsqueeze(0)
             elif isinstance(audio_data, np.ndarray):
                 if sample_rate is None:
                     raise ValueError("sample_rate must be provided when audio_data is numpy array")
@@ -177,8 +184,7 @@ class SeamlessM4TInference:
             with torch.no_grad():
                 output_tokens = self.model_s2t.generate(
                     **audio_inputs,
-                    tgt_lang=target_lang,
-                    generate_speech=False
+                    tgt_lang=target_lang
                 )
 
             # Decode output
@@ -412,8 +418,8 @@ class SeamlessM4TInference:
                     generate_speech=True
                 )
 
-            # Extract audio
-            audio_samples = output[0].cpu().numpy()
+            # Extract audio (output is tuple: (audio_tensor, text_tokens))
+            audio_samples = output[0].cpu().squeeze().numpy()
 
             processing_time = time.time() - start_time
 

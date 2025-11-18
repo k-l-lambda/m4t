@@ -93,16 +93,45 @@ class LanguagesResponse(BaseModel):
     languages: dict
 
 
+class ErrorResponse(BaseModel):
+    """Error response model"""
+    error: str = Field(..., description="Error type or category")
+    message: str = Field(..., description="Human-readable error message")
+    details: Optional[str] = Field(None, description="Additional error details")
+    suggestion: Optional[str] = Field(None, description="Suggested solution or next steps")
+
+
 # ==================== Helper Functions ====================
+
+def create_error_response(
+    error_type: str,
+    message: str,
+    details: Optional[str] = None,
+    suggestion: Optional[str] = None
+) -> JSONResponse:
+    """Create a standardized error response"""
+    error_data = {
+        "error": error_type,
+        "message": message,
+    }
+    if details:
+        error_data["details"] = details
+    if suggestion:
+        error_data["suggestion"] = suggestion
+
+    return error_data
+
 
 def validate_language(lang_code: str, param_name: str = "language"):
     """Validate if language code is supported"""
     if lang_code not in SUPPORTED_LANGUAGES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported {param_name}: '{lang_code}'. "
-                   f"Supported languages: {list(SUPPORTED_LANGUAGES.keys())}"
+        error_data = create_error_response(
+            error_type="UnsupportedLanguage",
+            message=f"Language code '{lang_code}' is not supported",
+            details=f"The {param_name} '{lang_code}' is not in the list of supported languages",
+            suggestion=f"Use GET /languages to see all supported languages, or try common codes like 'eng', 'cmn', 'jpn', 'kor'"
         )
+        raise HTTPException(status_code=400, detail=error_data)
 
 
 async def read_audio_file(file: UploadFile) -> bytes:
@@ -110,11 +139,24 @@ async def read_audio_file(file: UploadFile) -> bytes:
     try:
         audio_data = await file.read()
         if not audio_data:
-            raise HTTPException(status_code=400, detail="Empty audio file")
+            error_data = create_error_response(
+                error_type="EmptyFile",
+                message="The uploaded audio file is empty",
+                suggestion="Please upload a valid audio file (WAV, MP3, FLAC, M4A, OGG)"
+            )
+            raise HTTPException(status_code=400, detail=error_data)
         return audio_data
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error reading audio file: {e}")
-        raise HTTPException(status_code=400, detail=f"Error reading audio file: {str(e)}")
+        error_data = create_error_response(
+            error_type="FileReadError",
+            message="Failed to read the uploaded audio file",
+            details=str(e),
+            suggestion="Ensure the file is a valid audio format and not corrupted"
+        )
+        raise HTTPException(status_code=400, detail=error_data)
 
 
 def audio_array_to_wav_bytes(audio_array: np.ndarray, sample_rate: int) -> bytes:
@@ -212,7 +254,13 @@ async def speech_to_text_translation(
         raise
     except Exception as e:
         logger.error(f"Error in S2TT: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_data = create_error_response(
+            error_type="AudioProcessingError",
+            message="Failed to process speech-to-text translation",
+            details=str(e),
+            suggestion="Check that your audio file is valid (WAV, MP3, FLAC) and not corrupted. For Japanese translation, ensure audio is clear."
+        )
+        raise HTTPException(status_code=500, detail=error_data)
 
 
 @app.post("/v1/speech-to-speech-translation")
@@ -277,7 +325,13 @@ async def speech_to_speech_translation(
         raise
     except Exception as e:
         logger.error(f"Error in S2ST: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_data = create_error_response(
+            error_type="AudioProcessingError",
+            message="Failed to process speech-to-speech translation",
+            details=str(e),
+            suggestion="Check that your audio file is valid. Ensure both source and target languages support speech generation."
+        )
+        raise HTTPException(status_code=500, detail=error_data)
 
 
 @app.post("/v1/transcribe", response_model=TranslationResponse)
@@ -310,7 +364,13 @@ async def transcribe_audio(
         raise
     except Exception as e:
         logger.error(f"Error in ASR: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_data = create_error_response(
+            error_type="AudioProcessingError",
+            message="Failed to transcribe audio",
+            details=str(e),
+            suggestion="Check that your audio file is valid and the language code matches the audio language. Common codes: 'jpn', 'cmn', 'eng'."
+        )
+        raise HTTPException(status_code=500, detail=error_data)
 
 
 @app.post("/v1/text-to-text-translation", response_model=TranslationResponse)
@@ -339,7 +399,13 @@ async def text_to_text_translation(request: TextTranslationRequest):
         raise
     except Exception as e:
         logger.error(f"Error in T2TT: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_data = create_error_response(
+            error_type="TranslationError",
+            message="Failed to translate text",
+            details=str(e),
+            suggestion="Check that both source and target language codes are valid. Note: Japanese text translation has known limitations; consider using speech translation instead."
+        )
+        raise HTTPException(status_code=500, detail=error_data)
 
 
 @app.get("/")
@@ -391,7 +457,13 @@ async def text_to_speech(request: TextToSpeechRequest):
 
     except Exception as e:
         logger.error(f"Error in TTS: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_data = create_error_response(
+            error_type="SpeechGenerationError",
+            message="Failed to generate speech from text",
+            details=str(e),
+            suggestion="Check that the language code is valid and supports speech generation. Common codes: 'cmn', 'eng', 'jpn', 'kor'."
+        )
+        raise HTTPException(status_code=500, detail=error_data)
 
 
 # ==================== Server Startup ====================
