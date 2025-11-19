@@ -57,6 +57,7 @@ class TextToSpeechRequest(BaseModel):
     """Request model for text-to-speech"""
     text: str = Field(..., description="Input text to convert to speech", max_length=MAX_TEXT_LENGTH)
     source_lang: str = Field(..., description="Language code for the speech (e.g., 'eng', 'cmn', 'jpn')")
+    speaker_id: int = Field(0, description="Speaker voice ID (0-199, default: 0)", ge=0, le=199)
 
 
 class TranslationResponse(BaseModel):
@@ -311,7 +312,8 @@ async def speech_to_speech_translation(
     target_lang: str = Form(..., description="Target language code"),
     source_lang: Optional[str] = Form(None, description="Source language code (optional)"),
     response_format: str = Form("json", description="Response format: 'json' or 'audio'"),
-    separate_vocals: bool = Form(False, description="Separate vocals from background music first")
+    separate_vocals: bool = Form(False, description="Separate vocals from background music first"),
+    speaker_id: int = Form(0, description="Speaker voice ID (0-199, default: 0)")
 ):
     """
     Translate speech to speech in a different language (S2ST)
@@ -348,7 +350,8 @@ async def speech_to_speech_translation(
         result = model.speech_to_speech_translation(
             audio_data=audio_data,
             target_lang=target_lang,
-            source_lang=source_lang
+            source_lang=source_lang,
+            speaker_id=speaker_id
         )
 
         # Extract audio array
@@ -502,7 +505,8 @@ async def text_to_speech(request: TextToSpeechRequest):
         model = get_model()
         result = model.text_to_speech(
             text=request.text,
-            language=request.source_lang
+            language=request.source_lang,
+            speaker_id=request.speaker_id
         )
 
         # Convert numpy array to list for JSON serialization

@@ -213,7 +213,8 @@ class SeamlessM4TInference:
         audio_data: Union[bytes, np.ndarray],
         target_lang: str,
         source_lang: Optional[str] = None,
-        sample_rate: Optional[int] = None
+        sample_rate: Optional[int] = None,
+        speaker_id: int = 0
     ) -> Dict:
         """
         Speech-to-Speech Translation (S2ST)
@@ -223,6 +224,7 @@ class SeamlessM4TInference:
             target_lang: Target language code
             source_lang: Source language code (optional)
             sample_rate: Sample rate if audio_data is numpy array
+            speaker_id: Speaker voice ID (0-199, default: 0)
 
         Returns:
             Dict with translation result including audio and text
@@ -253,7 +255,8 @@ class SeamlessM4TInference:
                     **audio_inputs,
                     tgt_lang=target_lang,
                     generate_speech=True,
-                    return_intermediate_token_ids=True
+                    return_intermediate_token_ids=True,
+                    speaker_id=speaker_id
                 )
 
             # Extract audio and text
@@ -397,7 +400,8 @@ class SeamlessM4TInference:
     def text_to_speech(
         self,
         text: str,
-        language: str
+        language: str,
+        speaker_id: int = 0
     ) -> Dict:
         """
         Text-to-Speech (TTS)
@@ -405,6 +409,7 @@ class SeamlessM4TInference:
         Args:
             text: Input text
             language: Language code for the speech output
+            speaker_id: Speaker voice ID (0-199, default: 0)
 
         Returns:
             Dict with speech audio and metadata
@@ -430,7 +435,8 @@ class SeamlessM4TInference:
                 output = self.model_unified.generate(
                     **text_inputs,
                     tgt_lang=language,
-                    generate_speech=True
+                    generate_speech=True,
+                    speaker_id=speaker_id
                 )
 
             # Extract audio (output is tuple: (audio_tensor, text_tokens))
