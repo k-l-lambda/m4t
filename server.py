@@ -27,6 +27,8 @@ from config import (
     TASK_T2TT,
 )
 from models import get_model
+from voice_detector import get_vad
+from audio_separator import get_separator
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -99,6 +101,33 @@ class ErrorResponse(BaseModel):
     message: str = Field(..., description="Human-readable error message")
     details: Optional[str] = Field(None, description="Additional error details")
     suggestion: Optional[str] = Field(None, description="Suggested solution or next steps")
+
+
+class VADSegment(BaseModel):
+    """Voice activity detection segment"""
+    start: float = Field(..., description="Start time in seconds")
+    end: float = Field(..., description="End time in seconds")
+    duration: float = Field(..., description="Duration in seconds")
+
+
+class VADResponse(BaseModel):
+    """Voice activity detection response"""
+    task: str = "vad"
+    total_duration: float = Field(..., description="Total audio duration in seconds")
+    speech_segments: list[VADSegment]
+    segment_count: int
+    total_speech_duration: float = Field(..., description="Total speech duration in seconds")
+    processing_time: float
+
+
+class SeparatorResponse(BaseModel):
+    """Audio separation response"""
+    task: str = "separate"
+    input_duration: float
+    vocals_audio_base64: str = Field(..., description="Base64-encoded vocals audio (WAV)")
+    sample_rate: int
+    processing_time: float
+    separator_available: bool
 
 
 # ==================== Helper Functions ====================
@@ -224,12 +253,15 @@ async def list_tasks():
 async def speech_to_text_translation(
     audio: UploadFile = File(..., description="Audio file to translate"),
     target_lang: str = Form(..., description="Target language code (e.g., 'cmn')"),
-    source_lang: Optional[str] = Form(None, description="Source language code (optional)")
+    source_lang: Optional[str] = Form(None, description="Source language code (optional)"),
+    separate_vocals: bool = Form(False, description="Separate vocals from background music first")
 ):
     """
     Translate speech to text in a different language (S2TT)
 
-    Example: Japanese audio → Chinese text
+    Example: Japanese audio -> Chinese text
+
+    Optional: Use `separate_vocals=true` to extract vocals from background music first.
     """
     try:
         # Validate language
@@ -239,6 +271,16 @@ async def speech_to_text_translation(
 
         # Read audio
         audio_data = await read_audio_file(audio)
+
+        # Optional: Separate vocals from background music
+        if separate_vocals:
+            logger.info("Separating vocals from background music...")
+            separator = get_separator()
+            if separator.is_available():
+                audio_data = separator.preprocess_audio_bytes(audio_data)
+                logger.info("Vocals separated successfully")
+            else:
+                logger.warning("Spleeter not available, skipping vocal separation")
 
         # Get model and perform translation
         model = get_model()
@@ -268,12 +310,15 @@ async def speech_to_speech_translation(
     audio: UploadFile = File(..., description="Audio file to translate"),
     target_lang: str = Form(..., description="Target language code"),
     source_lang: Optional[str] = Form(None, description="Source language code (optional)"),
-    response_format: str = Form("json", description="Response format: 'json' or 'audio'")
+    response_format: str = Form("json", description="Response format: 'json' or 'audio'"),
+    separate_vocals: bool = Form(False, description="Separate vocals from background music first")
 ):
     """
     Translate speech to speech in a different language (S2ST)
 
-    Example: Japanese audio → Chinese audio
+    Example: Japanese audio -> Chinese audio
+
+    Optional: Use `separate_vocals=true` to extract vocals from background music first.
 
     Response formats:
     - 'json': Returns JSON with base64-encoded audio
@@ -287,6 +332,16 @@ async def speech_to_speech_translation(
 
         # Read audio
         audio_data = await read_audio_file(audio)
+
+        # Optional: Separate vocals from background music
+        if separate_vocals:
+            logger.info("Separating vocals from background music...")
+            separator = get_separator()
+            if separator.is_available():
+                audio_data = separator.preprocess_audio_bytes(audio_data)
+                logger.info("Vocals separated successfully")
+            else:
+                logger.warning("Spleeter not available, skipping vocal separation")
 
         # Get model and perform translation
         model = get_model()
@@ -342,7 +397,7 @@ async def transcribe_audio(
     """
     Transcribe speech to text in the same language (ASR)
 
-    Example: Japanese audio → Japanese text
+    Example: Japanese audio -> Japanese text
     """
     try:
         # Validate language
@@ -378,7 +433,7 @@ async def text_to_text_translation(request: TextTranslationRequest):
     """
     Translate text to text in a different language (T2TT)
 
-    Example: Japanese text → Chinese text
+    Example: Japanese text -> Chinese text
     """
     try:
         # Validate languages
@@ -464,6 +519,142 @@ async def text_to_speech(request: TextToSpeechRequest):
             suggestion="Check that the language code is valid and supports speech generation. Common codes: 'cmn', 'eng', 'jpn', 'kor'."
         )
         raise HTTPException(status_code=500, detail=error_data)
+
+
+# ==================== VAD and Audio Separation Endpoints ====================
+
+@app.post("/v1/detect-voice", response_model=VADResponse)
+async def detect_voice(
+    audio: UploadFile = File(..., description="Audio file to analyze"),
+    threshold: float = Form(0.5, description="Speech detection threshold (0.0-1.0)"),
+    min_speech_duration_ms: int = Form(250, description="Minimum speech duration in ms"),
+    min_silence_duration_ms: int = Form(300, description="Minimum silence duration in ms")
+):
+    """
+    Detect voice activity in audio file
+
+    Returns speech segments with timestamps.
+    """
+    import time
+    start_time = time.time()
+
+    try:
+        # Read audio file
+        audio_data = await audio.read()
+
+        # Get VAD detector
+        vad = get_vad()
+
+        # Detect speech segments
+        segments = vad.detect_speech_from_bytes(
+            audio_data,
+            sample_rate=16000,
+            threshold=threshold,
+            min_speech_duration_ms=min_speech_duration_ms,
+            min_silence_duration_ms=min_silence_duration_ms
+        )
+
+        # Calculate total durations
+        total_speech_duration = sum(seg['duration'] for seg in segments)
+
+        # Get total duration
+        import soundfile as sf
+        audio_array, sr = sf.read(io.BytesIO(audio_data))
+        total_duration = len(audio_array) / sr
+
+        processing_time = time.time() - start_time
+
+        return VADResponse(
+            total_duration=total_duration,
+            speech_segments=[VADSegment(**seg) for seg in segments],
+            segment_count=len(segments),
+            total_speech_duration=total_speech_duration,
+            processing_time=processing_time
+        )
+
+    except Exception as e:
+        logger.error(f"Error in voice detection: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=create_error_response(
+                "VoiceDetectionError",
+                "Failed to detect voice activity",
+                str(e),
+                "Ensure audio file is in a supported format (WAV, MP3, FLAC, etc.)"
+            )
+        )
+
+
+@app.post("/v1/separate-vocals", response_model=SeparatorResponse)
+async def separate_vocals(
+    audio: UploadFile = File(..., description="Audio file to separate")
+):
+    """
+    Separate vocals from background music
+
+    Returns vocals-only audio in base64-encoded WAV format.
+    Requires Spleeter to be installed.
+    """
+    import time
+    start_time = time.time()
+
+    try:
+        # Get audio separator
+        separator = get_separator()
+
+        # Check if separator is available
+        if not separator.is_available():
+            raise HTTPException(
+                status_code=503,
+                detail=create_error_response(
+                    "SeparatorUnavailable",
+                    "Spleeter is not installed or unavailable",
+                    "The audio separation feature requires Spleeter",
+                    "Install Spleeter with: pip install spleeter"
+                )
+            )
+
+        # Read audio file
+        audio_data = await audio.read()
+
+        # Get input duration
+        import soundfile as sf
+        audio_array, sr = sf.read(io.BytesIO(audio_data))
+        input_duration = len(audio_array) / sr
+
+        # Separate vocals
+        vocals_array, vocals_sr = separator.separate_vocals_from_bytes(audio_data, sample_rate=16000)
+
+        # Convert to base64
+        buffer = io.BytesIO()
+        sf.write(buffer, vocals_array, vocals_sr, format='WAV')
+        buffer.seek(0)
+        vocals_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+
+        processing_time = time.time() - start_time
+
+        return SeparatorResponse(
+            input_duration=input_duration,
+            vocals_audio_base64=vocals_base64,
+            sample_rate=vocals_sr,
+            processing_time=processing_time,
+            separator_available=True
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.error(f"Error in audio separation: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=create_error_response(
+                "AudioSeparationError",
+                "Failed to separate vocals from audio",
+                str(e),
+                "Ensure audio file is in a supported format and Spleeter is properly installed"
+            )
+        )
 
 
 # ==================== Server Startup ====================

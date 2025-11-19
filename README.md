@@ -4,12 +4,14 @@ Multilingual speech and text translation API using Meta's **SeamlessM4T v2** mod
 
 ## Features
 
-- **5 Translation & Speech Tasks:**
+- **7 Translation & Speech Tasks:**
   - 🎤→📝 **S2TT**: Speech-to-Text Translation (e.g., Japanese audio → Chinese text)
   - 🎤→🔊 **S2ST**: Speech-to-Speech Translation (e.g., Japanese audio → Chinese audio)
   - 🎤→📝 **ASR**: Automatic Speech Recognition (e.g., Japanese audio → Japanese text)
   - 📝→📝 **T2TT**: Text-to-Text Translation (e.g., English text → Chinese text)
   - 📝→🔊 **TTS**: Text-to-Speech (e.g., Chinese text → Chinese audio)
+  - 🎙️ **VAD**: Voice Activity Detection (detect speech segments in audio)
+  - 🎵 **Vocal Separation**: Extract vocals from background music (optional Spleeter)
 
 - **Wide Language Support:** 101 languages for speech, 96 for text
 - **High Quality:** 2.3B parameter model with state-of-the-art translation quality
@@ -62,6 +64,8 @@ docker run -d --gpus '"device=0"' -p 8000:8000 \
 | `/v1/transcribe` | POST | Transcribe speech (ASR) |
 | `/v1/text-to-text-translation` | POST | Translate text to text (T2TT) |
 | `/v1/text-to-speech` | POST | Convert text to speech (TTS) |
+| `/v1/detect-voice` | POST | Detect speech segments (VAD) |
+| `/v1/separate-vocals` | POST | Separate vocals from music (requires Spleeter) |
 
 ## Usage Examples
 
@@ -180,6 +184,103 @@ sample_rate = result['output_sample_rate']
 # Save to WAV file
 sf.write('output_speech.wav', audio_array, sample_rate)
 ```
+
+### 6. Voice Activity Detection (VAD)
+
+Detect speech segments in audio files with precise timestamps.
+
+**Basic usage:**
+```bash
+curl -X POST "http://localhost:8000/v1/detect-voice" \
+  -F "audio=@audio_file.wav"
+```
+
+**With parameters:**
+```bash
+curl -X POST "http://localhost:8000/v1/detect-voice" \
+  -F "audio=@audio_file.wav" \
+  -F "threshold=0.5" \
+  -F "min_speech_duration_ms=250" \
+  -F "min_silence_duration_ms=300"
+```
+
+**Parameters:**
+- `threshold` (float, default: 0.5): Speech detection threshold (0.0-1.0). Lower = more sensitive
+- `min_speech_duration_ms` (int, default: 250): Minimum speech segment duration in milliseconds
+- `min_silence_duration_ms` (int, default: 300): Minimum silence duration between segments
+
+**Response:**
+```json
+{
+  "task": "vad",
+  "total_duration": 3.18,
+  "speech_segments": [
+    {
+      "start": 0.258,
+      "end": 2.846,
+      "duration": 2.588
+    }
+  ],
+  "segment_count": 1,
+  "total_speech_duration": 2.588,
+  "processing_time": 0.064
+}
+```
+
+**Use cases:**
+- Intelligent audio segmentation for long recordings
+- Silence removal for efficient processing
+- Speech quality analysis
+- Preprocessing for translation workflows
+
+**Performance:** ~40-50x faster than real-time (3s audio processed in 0.06s)
+
+### 7. Vocal Separation (Audio Preprocessing)
+
+Separate vocals from background music using Spleeter. Useful for improving speech recognition/translation quality on audio with music.
+
+**Note:** Requires Spleeter installation: `pip install spleeter`
+
+```bash
+curl -X POST "http://localhost:8000/v1/separate-vocals" \
+  -F "audio=@audio_with_music.wav" \
+  | python3 -c "import sys, json, base64; d=json.load(sys.stdin); open('vocals.wav','wb').write(base64.b64decode(d['vocals_audio_base64']))"
+```
+
+**Response:**
+```json
+{
+  "task": "separate",
+  "input_duration": 5.2,
+  "vocals_audio_base64": "UklGRiQAAABXQVZFZm10...",
+  "sample_rate": 16000,
+  "processing_time": 3.45,
+  "separator_available": true
+}
+```
+
+**Optional preprocessing for translation:**
+
+You can automatically separate vocals before translation by adding `separate_vocals=true`:
+
+```bash
+# Speech-to-text translation with vocal separation
+curl -X POST "http://localhost:8000/v1/speech-to-text-translation" \
+  -F "audio=@audio_with_music.wav" \
+  -F "target_lang=cmn" \
+  -F "source_lang=jpn" \
+  -F "separate_vocals=true"
+
+# Speech-to-speech translation with vocal separation
+curl -X POST "http://localhost:8000/v1/speech-to-speech-translation" \
+  -F "audio=@audio_with_music.wav" \
+  -F "target_lang=cmn" \
+  -F "separate_vocals=true" \
+  -F "response_format=audio" \
+  -o translated_vocals.wav
+```
+
+If Spleeter is not installed, the parameter is ignored and processing continues without separation (with a warning).
 
 ### Python Client Example
 
@@ -344,6 +445,8 @@ m4t/
 ├── config.py              # Configuration settings
 ├── models.py              # Model loading and inference
 ├── server.py              # FastAPI application
+├── voice_detector.py      # Voice activity detection (Silero VAD)
+├── audio_separator.py     # Audio source separation (Spleeter)
 ├── requirements.txt       # Python dependencies
 ├── Dockerfile            # Docker image definition
 ├── docker-compose.yml    # Docker Compose configuration
