@@ -257,8 +257,23 @@ class SeamlessM4TInference:
                 )
 
             # Extract audio and text
-            audio_samples = output[0].cpu().numpy()
-            text_tokens = output[1][0] if len(output) > 1 else None
+            # output is a tuple: (audio_tensor, text_tokens)
+            # audio_tensor has shape [batch_size, samples], need to squeeze batch dimension
+            audio_samples = output[0].cpu().squeeze().numpy()
+
+            # Handle text_tokens carefully - it might be a 0-dim tensor
+            text_tokens = None
+            if len(output) > 1 and output[1] is not None:
+                # output[1] might be a tensor or a list
+                if isinstance(output[1], torch.Tensor):
+                    # If it's a 0-dim tensor, use .item() to get the value
+                    if output[1].dim() == 0:
+                        text_tokens = None  # Skip 0-dim tensors
+                    else:
+                        text_tokens = output[1][0] if output[1].dim() > 0 else None
+                else:
+                    # It's already a list or sequence
+                    text_tokens = output[1][0] if len(output[1]) > 0 else None
 
             # Decode text if available
             translated_text = ""
