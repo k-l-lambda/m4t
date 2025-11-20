@@ -1,0 +1,3 @@
+[submodule "third_party/GPT-SoVITS"]
+	path = third_party/GPT-SoVITS
+	url = https://github.com/RVC-Boss/GPT-SoVITS.git

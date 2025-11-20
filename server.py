@@ -29,6 +29,7 @@ from config import (
 from models import get_model
 from voice_detector import get_vad
 from audio_separator import get_separator
+from voice_cloner import get_voice_cloner
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -657,6 +658,150 @@ async def separate_vocals(
                 "Failed to separate vocals from audio",
                 str(e),
                 "Ensure audio file is in a supported format and Spleeter is properly installed"
+            )
+        )
+
+
+# ==================== Voice Cloning Endpoint ====================
+
+class VoiceCloneRequest(BaseModel):
+    """Request model for voice cloning"""
+    text: str = Field(..., description="Text to synthesize")
+    text_language: str = Field(..., description="Language of the text (zh, en, ja, etc.)")
+    prompt_text: str = Field(..., description="Text content of the reference audio")
+    prompt_language: str = Field(..., description="Language of the reference audio")
+    cut_punc: Optional[str] = Field(None, description="Optional text splitting punctuation")
+
+
+class VoiceCloneResponse(BaseModel):
+    """Response model for voice cloning"""
+    task: str = "voice_clone"
+    output_audio_base64: str
+    output_sample_rate: int
+    text_length: int
+    output_duration: float
+    processing_time: float
+    service_available: bool
+
+
+@app.post("/v1/voice-clone", response_model=VoiceCloneResponse)
+async def voice_clone_endpoint(
+    audio: UploadFile = File(..., description="Reference audio file"),
+    text: str = Form(..., description="Text to synthesize"),
+    text_language: str = Form(..., description="Language of the text"),
+    prompt_text: str = Form(..., description="Text content of reference audio"),
+    prompt_language: str = Form(..., description="Language of reference audio"),
+    cut_punc: Optional[str] = Form(None, description="Text splitting punctuation")
+):
+    """
+    Voice cloning endpoint using GPT-SoVITS
+
+    **Clone a speaker's voice and generate speech from text**
+
+    This endpoint uses GPT-SoVITS to clone the voice characteristics from a reference
+    audio sample and generate speech with the same voice for the given text.
+
+    **Parameters:**
+    - **audio**: Reference audio file (WAV format recommended)
+    - **text**: Text to synthesize in the target language
+    - **text_language**: Language code for the text (zh, en, ja, ko, etc.)
+    - **prompt_text**: Transcription of the reference audio
+    - **prompt_language**: Language code of the reference audio
+    - **cut_punc**: Optional punctuation marks for text segmentation
+
+    **Returns:**
+    - **output_audio_base64**: Generated audio in base64 encoding
+    - **output_sample_rate**: Sample rate of the generated audio
+    - **processing_time**: Time taken for voice cloning
+
+    **Example:**
+    ```bash
+    curl -X POST "http://localhost:8000/v1/voice-clone" \\
+      -F "audio=@reference.wav" \\
+      -F "text=Hello, this is a test." \\
+      -F "text_language=en" \\
+      -F "prompt_text=This is the reference audio." \\
+      -F "prompt_language=en"
+    ```
+
+    **Notes:**
+    - Requires GPT-SoVITS service to be running on port 9880
+    - Reference audio should be clear and noise-free for best results
+    - Longer reference audio (10-30 seconds) generally produces better quality
+    """
+    import time
+    start_time = time.time()
+
+    try:
+        # Get voice cloner instance
+        cloner = get_voice_cloner()
+
+        # Check if service is available
+        if not cloner.is_available():
+            raise HTTPException(
+                status_code=503,
+                detail=create_error_response(
+                    "VoiceClonerUnavailable",
+                    "GPT-SoVITS service is not available",
+                    "The voice cloning feature requires GPT-SoVITS service running",
+                    "Start GPT-SoVITS API server: python /path/to/GPT-SoVITS/api.py"
+                )
+            )
+
+        # Read reference audio
+        audio_bytes = await audio.read()
+
+        # Perform voice cloning
+        result_audio = cloner.clone_voice_from_bytes(
+            text=text,
+            text_language=text_language,
+            refer_audio_bytes=audio_bytes,
+            prompt_text=prompt_text,
+            prompt_language=prompt_language,
+            cut_punc=cut_punc
+        )
+
+        if result_audio is None:
+            raise HTTPException(
+                status_code=500,
+                detail=create_error_response(
+                    "VoiceCloneError",
+                    "Voice cloning failed",
+                    "Failed to generate audio with cloned voice",
+                    "Ensure reference audio is clear and in supported format"
+                )
+            )
+
+        # Calculate output duration
+        import soundfile as sf
+        audio_array, sr = sf.read(io.BytesIO(result_audio))
+        output_duration = len(audio_array) / sr
+
+        # Convert to base64
+        audio_base64 = base64.b64encode(result_audio).decode('utf-8')
+
+        processing_time = time.time() - start_time
+
+        return VoiceCloneResponse(
+            output_audio_base64=audio_base64,
+            output_sample_rate=sr,
+            text_length=len(text),
+            output_duration=output_duration,
+            processing_time=processing_time,
+            service_available=True
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in voice cloning: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=create_error_response(
+                "VoiceCloneError",
+                "Voice cloning failed",
+                str(e),
+                "Check GPT-SoVITS service status and audio file format"
             )
         )
 

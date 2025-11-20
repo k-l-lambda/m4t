@@ -49,6 +49,63 @@ docker run -d --gpus '"device=0"' -p 8000:8000 \
   seamless-m4t-api
 ```
 
+## Configuration
+
+The server can be configured using environment variables or a `.env.local` file in the project root.
+
+### Configuration File (.env.local)
+
+Create a `.env.local` file to customize server settings:
+
+```bash
+# Server Configuration
+SERVER_HOST=0.0.0.0
+SERVER_PORT=8000
+
+# Audio and Text Limits
+MAX_AUDIO_LENGTH=300  # seconds
+MAX_TEXT_LENGTH=2000  # characters
+
+# GPT-SoVITS Configuration (for voice cloning)
+GPTSOVITS_API_URL=http://localhost:9880
+
+# Proxy Configuration (for model downloads)
+HTTP_PROXY=http://localhost:1091
+HTTPS_PROXY=http://localhost:1091
+
+# Logging
+LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+```
+
+### Environment Variables
+
+All configuration options can also be set via environment variables:
+
+```bash
+# Change server port
+export SERVER_PORT=9000
+python server.py
+
+# Or inline
+SERVER_PORT=9000 python server.py
+```
+
+### Restart Script
+
+A convenience script is provided to restart the server with proper cache clearing:
+
+```bash
+./restart.sh
+```
+
+This script will:
+- Stop existing server processes
+- Clear Python cache
+- Start server with nohup (runs in background)
+- Wait for server readiness
+- Check GPT-SoVITS availability
+- Display server status and configuration
+
 ## API Endpoints
 
 ### Base URL: `http://localhost:8000`
@@ -281,6 +338,55 @@ curl -X POST "http://localhost:8000/v1/speech-to-speech-translation" \
 ```
 
 If Spleeter is not installed, the parameter is ignored and processing continues without separation (with a warning).
+
+### 8. Voice Cloning
+
+**Endpoint:** `POST /v1/voice-clone`
+
+Clone a speaker's voice from a reference audio and generate speech with the same voice.
+
+**Requirements:**
+- GPT-SoVITS service running on port 9880
+- Start with: `python /path/to/GPT-SoVITS/api.py`
+
+**Example:**
+
+```bash
+curl -X POST "http://localhost:8000/v1/voice-clone" \
+  -F "audio=@reference_audio.wav" \
+  -F "text=Hello, this is a voice cloning test." \
+  -F "text_language=en" \
+  -F "prompt_text=This is the reference audio." \
+  -F "prompt_language=en" \
+  -o cloned_voice.wav
+```
+
+**Parameters:**
+- `audio`: Reference audio file (WAV format recommended)
+- `text`: Text to synthesize in the target language
+- `text_language`: Language code (zh, en, ja, ko, etc.)
+- `prompt_text`: Transcription of the reference audio
+- `prompt_language`: Language of the reference audio
+- `cut_punc` (optional): Punctuation for text segmentation
+
+**Response:**
+```json
+{
+  "task": "voice_clone",
+  "output_audio_base64": "...",
+  "output_sample_rate": 32000,
+  "text_length": 35,
+  "output_duration": 3.5,
+  "processing_time": 2.1,
+  "service_available": true
+}
+```
+
+**Notes:**
+- Reference audio should be 5-30 seconds long for best results
+- Clear, noise-free audio produces better voice clones
+- Supports multiple languages: Chinese, English, Japanese, Korean, etc.
+- GPU recommended (4-6GB VRAM for inference)
 
 ### Python Client Example
 

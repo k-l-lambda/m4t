@@ -1,6 +1,7 @@
 """
 Configuration for SeamlessM4T Inference Server
 """
+import env_loader  # Load .env.local before any config values
 import os
 from typing import Dict, List
 
@@ -19,10 +20,13 @@ os.environ["HTTP_PROXY"] = HTTP_PROXY
 os.environ["HTTPS_PROXY"] = HTTPS_PROXY
 
 # Server Configuration
-SERVER_HOST = "0.0.0.0"
-SERVER_PORT = 8000
-MAX_AUDIO_LENGTH = 300  # seconds
-MAX_TEXT_LENGTH = 2000  # characters
+SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
+SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
+MAX_AUDIO_LENGTH = int(os.getenv("MAX_AUDIO_LENGTH", "300"))  # seconds
+MAX_TEXT_LENGTH = int(os.getenv("MAX_TEXT_LENGTH", "2000"))  # characters
+
+# GPT-SoVITS Configuration
+GPTSOVITS_API_URL = os.getenv("GPTSOVITS_API_URL", "http://localhost:9880")
 
 # Audio Configuration
 TARGET_SAMPLE_RATE = 16000  # SeamlessM4T expects 16kHz audio
