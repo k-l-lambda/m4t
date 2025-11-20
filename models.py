@@ -17,7 +17,7 @@ from transformers import (
     SeamlessM4Tv2Model,
 )
 
-from config import (
+from config_m4t import (
     MODEL_NAME,
     DEVICE,
     TORCH_DTYPE,

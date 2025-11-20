@@ -10,7 +10,7 @@ import logging
 import httpx
 from typing import Optional, Dict, Any
 import base64
-from config import GPTSOVITS_API_URL
+from config_m4t import GPTSOVITS_API_URL
 
 logger = logging.getLogger(__name__)
 

@@ -7,6 +7,8 @@ import logging
 import base64
 from typing import Optional
 import wave
+import tempfile
+import os
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Response
 from fastapi.responses import JSONResponse
@@ -14,7 +16,7 @@ from pydantic import BaseModel, Field
 import uvicorn
 import numpy as np
 
-from config import (
+from config_m4t import (
     SERVER_HOST,
     SERVER_PORT,
     SUPPORTED_LANGUAGES,
@@ -30,6 +32,7 @@ from models import get_model
 from voice_detector import get_vad
 from audio_separator import get_separator
 from voice_cloner import get_voice_cloner
+from gptsovits_local import get_gptsovits_local
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -694,7 +697,7 @@ async def voice_clone_endpoint(
     cut_punc: Optional[str] = Form(None, description="Text splitting punctuation")
 ):
     """
-    Voice cloning endpoint using GPT-SoVITS
+    Voice cloning endpoint using GPT-SoVITS (Direct Python Integration)
 
     **Clone a speaker's voice and generate speech from text**
 
@@ -725,40 +728,43 @@ async def voice_clone_endpoint(
     ```
 
     **Notes:**
-    - Requires GPT-SoVITS service to be running on port 9880
+    - Uses direct Python integration (no external GPT-SoVITS service needed)
     - Reference audio should be clear and noise-free for best results
     - Longer reference audio (10-30 seconds) generally produces better quality
     """
     import time
+    import soundfile as sf
     start_time = time.time()
 
+    temp_audio_path = None
+
     try:
-        # Get voice cloner instance
-        cloner = get_voice_cloner()
+        # Get local GPT-SoVITS instance (singleton, auto-initializes on first call)
+        gptsovits = get_gptsovits_local()
 
-        # Check if service is available
-        if not await cloner.is_available():
-            raise HTTPException(
-                status_code=503,
-                detail=create_error_response(
-                    "VoiceClonerUnavailable",
-                    "GPT-SoVITS service is not available",
-                    "The voice cloning feature requires GPT-SoVITS service running",
-                    "Start GPT-SoVITS API server: python /path/to/GPT-SoVITS/api.py"
-                )
-            )
-
-        # Read reference audio
+        # Read reference audio bytes
         audio_bytes = await audio.read()
 
-        # Perform voice cloning
-        result_audio = await cloner.clone_voice_from_bytes(
+        # Save reference audio to temporary file (GPT-SoVITS needs file path)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio:
+            temp_audio.write(audio_bytes)
+            temp_audio_path = temp_audio.name
+
+        logger.info(f"Voice cloning: text='{text[:50]}...', text_lang={text_language}, "
+                   f"prompt_lang={prompt_language}, ref_audio={temp_audio_path}")
+
+        # Perform voice cloning using local GPT-SoVITS
+        result_audio = gptsovits.generate_speech(
             text=text,
             text_language=text_language,
-            refer_audio_bytes=audio_bytes,
+            ref_wav_path=temp_audio_path,
             prompt_text=prompt_text,
             prompt_language=prompt_language,
-            cut_punc=cut_punc
+            top_k=15,
+            top_p=0.6,
+            temperature=0.6,
+            speed=1.0,
+            spk="default"
         )
 
         if result_audio is None:
@@ -773,7 +779,6 @@ async def voice_clone_endpoint(
             )
 
         # Calculate output duration
-        import soundfile as sf
         audio_array, sr = sf.read(io.BytesIO(result_audio))
         output_duration = len(audio_array) / sr
 
@@ -781,6 +786,9 @@ async def voice_clone_endpoint(
         audio_base64 = base64.b64encode(result_audio).decode('utf-8')
 
         processing_time = time.time() - start_time
+
+        logger.info(f"Voice cloning completed: {len(result_audio)} bytes, "
+                   f"{output_duration:.2f}s audio, {processing_time:.2f}s processing")
 
         return VoiceCloneResponse(
             output_audio_base64=audio_base64,
@@ -794,16 +802,23 @@ async def voice_clone_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in voice cloning: {e}")
+        logger.error(f"Error in voice cloning: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=create_error_response(
                 "VoiceCloneError",
                 "Voice cloning failed",
                 str(e),
-                "Check GPT-SoVITS service status and audio file format"
+                "Check audio file format and GPT-SoVITS model status"
             )
         )
+    finally:
+        # Clean up temporary audio file
+        if temp_audio_path and os.path.exists(temp_audio_path):
+            try:
+                os.unlink(temp_audio_path)
+            except Exception as e:
+                logger.warning(f"Failed to delete temp file {temp_audio_path}: {e}")
 
 
 # ==================== Server Startup ====================

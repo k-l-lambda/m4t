@@ -89,6 +89,13 @@ class GPTSoVITSLocal:
             original_cwd = os.getcwd()
             os.chdir(gptsovits_base)
 
+            # Remove m4t's config from module cache to avoid conflicts
+            # GPT-SoVITS needs to import its own config module
+            if 'config' in sys.modules:
+                import config as m4t_config  # Save reference to m4t's config
+                del sys.modules['config']
+                logger.info("Temporarily removed m4t's config from sys.modules")
+
             try:
                 import api as gptsovits_api
                 self.api = gptsovits_api
@@ -101,6 +108,11 @@ class GPTSoVITSLocal:
             finally:
                 # Always restore original working directory
                 os.chdir(original_cwd)
+
+                # Restore m4t's config to sys.modules
+                if 'm4t_config' in locals():
+                    sys.modules['config'] = m4t_config
+                    logger.info("Restored m4t's config to sys.modules")
 
         except ImportError as e:
             logger.error(f"Failed to import GPT-SoVITS api: {e}")
