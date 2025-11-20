@@ -4,7 +4,7 @@ Multilingual speech and text translation API using Meta's **SeamlessM4T v2** mod
 
 ## Features
 
-- **7 Translation & Speech Tasks:**
+- **8 Translation & Speech Tasks:**
   - 🎤→📝 **S2TT**: Speech-to-Text Translation (e.g., Japanese audio → Chinese text)
   - 🎤→🔊 **S2ST**: Speech-to-Speech Translation (e.g., Japanese audio → Chinese audio)
   - 🎤→📝 **ASR**: Automatic Speech Recognition (e.g., Japanese audio → Japanese text)
@@ -12,6 +12,7 @@ Multilingual speech and text translation API using Meta's **SeamlessM4T v2** mod
   - 📝→🔊 **TTS**: Text-to-Speech (e.g., Chinese text → Chinese audio)
   - 🎙️ **VAD**: Voice Activity Detection (detect speech segments in audio)
   - 🎵 **Vocal Separation**: Extract vocals from background music (optional Spleeter)
+  - 🎭 **Voice Cloning**: Clone speaker voice with GPT-SoVITS (direct Python integration)
 
 - **Wide Language Support:** 101 languages for speech, 96 for text
 - **High Quality:** 2.3B parameter model with state-of-the-art translation quality
@@ -339,33 +340,60 @@ curl -X POST "http://localhost:8000/v1/speech-to-speech-translation" \
 
 If Spleeter is not installed, the parameter is ignored and processing continues without separation (with a warning).
 
-### 8. Voice Cloning
+### 8. Voice Cloning (GPT-SoVITS)
 
 **Endpoint:** `POST /v1/voice-clone`
 
-Clone a speaker's voice from a reference audio and generate speech with the same voice.
+Clone a speaker's voice from a reference audio and generate speech with the same voice characteristics.
 
-**Requirements:**
-- GPT-SoVITS service running on port 9880
-- Start with: `python /path/to/GPT-SoVITS/api.py`
+**Features:**
+- Direct Python integration (no external service needed)
+- Supports multiple languages: Chinese (zh), English (en), Japanese (ja), Korean (ko), etc.
+- High-quality voice cloning using GPT-SoVITS
+- Auto-downloads language detection models on first use
 
-**Example:**
+**Installation:**
+
+The voice cloning feature requires additional dependencies:
 
 ```bash
-curl -X POST "http://localhost:8000/v1/voice-clone" \
+# Install GPT-SoVITS dependencies
+cd /home/camus/work/m4t
+./env/bin/pip install cn2an num2words eng_to_ipa fugashi[unidic-lite] unidic-lite
+
+# GPT-SoVITS models are already included in third_party/GPT-SoVITS/
+```
+
+**First-time setup:**
+On first use with Chinese text, fast-langdetect will automatically download a 126MB language detection model. This only happens once.
+
+**Example (save directly to WAV file):**
+
+```bash
+# English text with English reference audio
+curl -s -X POST "http://localhost:8000/v1/voice-clone" \
   -F "audio=@reference_audio.wav" \
   -F "text=Hello, this is a voice cloning test." \
   -F "text_language=en" \
-  -F "prompt_text=This is the reference audio." \
+  -F "prompt_text=Original text from reference audio" \
   -F "prompt_language=en" \
-  -o cloned_voice.wav
+  | jq -r '.output_audio_base64' | base64 -d > cloned_voice.wav
+
+# Chinese text with English reference audio
+curl -s -X POST "http://localhost:8000/v1/voice-clone" \
+  -F "audio=@reference_audio.wav" \
+  -F "text=你好，这是一个中文语音克隆测试。" \
+  -F "text_language=zh" \
+  -F "prompt_text=Original English text from reference" \
+  -F "prompt_language=en" \
+  | jq -r '.output_audio_base64' | base64 -d > chinese_cloned.wav
 ```
 
 **Parameters:**
-- `audio`: Reference audio file (WAV format recommended)
+- `audio`: Reference audio file (WAV format recommended, 5-30 seconds)
 - `text`: Text to synthesize in the target language
-- `text_language`: Language code (zh, en, ja, ko, etc.)
-- `prompt_text`: Transcription of the reference audio
+- `text_language`: Language code - `zh` (Chinese), `en` (English), `ja` (Japanese), `ko` (Korean)
+- `prompt_text`: Transcription of the reference audio (what is being said)
 - `prompt_language`: Language of the reference audio
 - `cut_punc` (optional): Punctuation for text segmentation
 
@@ -373,7 +401,7 @@ curl -X POST "http://localhost:8000/v1/voice-clone" \
 ```json
 {
   "task": "voice_clone",
-  "output_audio_base64": "...",
+  "output_audio_base64": "UklGRiQAAABXQVZFZm10...",
   "output_sample_rate": 32000,
   "text_length": 35,
   "output_duration": 3.5,
@@ -382,11 +410,17 @@ curl -X POST "http://localhost:8000/v1/voice-clone" \
 }
 ```
 
+**Performance:**
+- English text: ~1-2 seconds processing time
+- Chinese text (first time): ~28 seconds (includes model download)
+- Chinese text (subsequent): ~1-2 seconds
+- Output: 32kHz mono WAV audio
+
 **Notes:**
-- Reference audio should be 5-30 seconds long for best results
-- Clear, noise-free audio produces better voice clones
-- Supports multiple languages: Chinese, English, Japanese, Korean, etc.
-- GPU recommended (4-6GB VRAM for inference)
+- Reference audio should be clear and noise-free for best results
+- Longer reference audio (10-30 seconds) generally produces better quality
+- The cloned voice will maintain the speaker's characteristics but speak the new text
+- GPU recommended for faster processing (uses ~4GB VRAM)
 
 ### Python Client Example
 
