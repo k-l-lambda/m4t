@@ -7,9 +7,7 @@ It allows text-to-speech generation using a reference audio sample to clone the 
 
 import os
 import logging
-import requests
-import urllib.request
-import urllib.error
+import httpx
 from typing import Optional, Dict, Any
 import base64
 from config import GPTSOVITS_API_URL
@@ -44,7 +42,7 @@ class VoiceCloner:
         self._available = None
         logger.info(f"VoiceCloner initialized with API URL: {self.api_url}")
 
-    def is_available(self) -> bool:
+    async def is_available(self) -> bool:
         """
         Check if GPT-SoVITS service is available
 
@@ -53,28 +51,28 @@ class VoiceCloner:
         """
         # Always recheck availability (don't cache indefinitely)
         # This allows the service to become available after startup
-        logger.info(f"[URLLIB-VERSION] Checking GPT-SoVITS at {self.api_url}/control")
+        logger.info(f"[HTTPX-ASYNC] Checking GPT-SoVITS at {self.api_url}/control")
         try:
-            # Try using urllib instead of requests to avoid potential connection pool issues
-            req = urllib.request.Request(f"{self.api_url}/control", method='GET')
-            with urllib.request.urlopen(req, timeout=2) as response:
-                status_code = response.getcode()
-                self._available = status_code in [200, 404]  # 404 means server is running
-                logger.info(f"[URLLIB-VERSION] GPT-SoVITS service available: {self._available}, status_code: {status_code}")
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.api_url}/control",
+                    timeout=2.0
+                )
+                self._available = response.status_code in [200, 404]  # 404 means server is running
+                logger.info(f"[HTTPX-ASYNC] GPT-SoVITS service available: {self._available}, status_code: {response.status_code}")
                 return self._available
-        except urllib.error.HTTPError as e:
-            # HTTPError means server responded, just with an error code
-            # WORKAROUND: Treat 503 as available because GPT-SoVITS logs show 200
-            # but Python clients receive 503 (possibly a networking/proxy issue)
-            self._available = e.code in [200, 404, 503]
-            logger.info(f"[URLLIB-VERSION] GPT-SoVITS HTTPError: {e.code}, treating as available: {self._available}")
+        except httpx.HTTPStatusError as e:
+            # HTTPStatusError means server responded with an error code
+            # No longer need 503 workaround with async httpx
+            self._available = e.response.status_code in [200, 404]
+            logger.info(f"[HTTPX-ASYNC] GPT-SoVITS HTTPStatusError: {e.response.status_code}, available: {self._available}")
             return self._available
         except Exception as e:
-            logger.warning(f"[URLLIB-VERSION] GPT-SoVITS service not available: {e}")
+            logger.warning(f"[HTTPX-ASYNC] GPT-SoVITS service not available: {e}")
             self._available = False
             return False
 
-    def clone_voice_from_audio(
+    async def clone_voice_from_audio(
         self,
         text: str,
         text_language: str,
@@ -97,7 +95,7 @@ class VoiceCloner:
         Returns:
             Audio bytes (WAV format) or None if failed
         """
-        if not self.is_available():
+        if not await self.is_available():
             logger.error("GPT-SoVITS service is not available")
             return None
 
@@ -114,31 +112,32 @@ class VoiceCloner:
             if cut_punc:
                 data["cut_punc"] = cut_punc
 
-            # Call GPT-SoVITS API
-            response = requests.post(
-                f"{self.api_url}/",
-                json=data,
-                timeout=60  # Voice generation can take time
-            )
+            # Call GPT-SoVITS API with async httpx
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.api_url}/",
+                    json=data,
+                    timeout=60.0  # Voice generation can take time
+                )
 
-            if response.status_code == 200:
-                # Success: returns WAV audio stream
-                logger.info(f"Voice cloning successful, audio size: {len(response.content)} bytes")
-                return response.content
-            else:
-                # Error: returns JSON with error message
-                error_msg = response.json() if response.headers.get('content-type') == 'application/json' else response.text
-                logger.error(f"Voice cloning failed: {error_msg}")
-                return None
+                if response.status_code == 200:
+                    # Success: returns WAV audio stream
+                    logger.info(f"Voice cloning successful, audio size: {len(response.content)} bytes")
+                    return response.content
+                else:
+                    # Error: returns JSON with error message
+                    error_msg = response.json() if 'application/json' in response.headers.get('content-type', '') else response.text
+                    logger.error(f"Voice cloning failed: {error_msg}")
+                    return None
 
-        except requests.exceptions.Timeout:
+        except httpx.TimeoutException:
             logger.error("Voice cloning request timeout")
             return None
         except Exception as e:
             logger.error(f"Voice cloning error: {e}")
             return None
 
-    def clone_voice_from_bytes(
+    async def clone_voice_from_bytes(
         self,
         text: str,
         text_language: str,
@@ -170,7 +169,7 @@ class VoiceCloner:
 
         try:
             # Use the file-based method
-            result = self.clone_voice_from_audio(
+            result = await self.clone_voice_from_audio(
                 text=text,
                 text_language=text_language,
                 refer_wav_path=tmp_path,
@@ -184,7 +183,7 @@ class VoiceCloner:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
 
-    def clone_voice_with_default(
+    async def clone_voice_with_default(
         self,
         text: str,
         text_language: str,
@@ -205,7 +204,7 @@ class VoiceCloner:
             logger.error("No default reference audio configured")
             return None
 
-        return self.clone_voice_from_audio(
+        return await self.clone_voice_from_audio(
             text=text,
             text_language=text_language,
             refer_wav_path=self.default_refer_wav,
@@ -214,7 +213,7 @@ class VoiceCloner:
             cut_punc=cut_punc
         )
 
-    def change_default_reference(
+    async def change_default_reference(
         self,
         refer_wav_path: str,
         prompt_text: str,
@@ -231,7 +230,7 @@ class VoiceCloner:
         Returns:
             True if successful
         """
-        if not self.is_available():
+        if not await self.is_available():
             logger.error("GPT-SoVITS service is not available")
             return False
 
@@ -242,22 +241,23 @@ class VoiceCloner:
                 "prompt_language": prompt_language
             }
 
-            response = requests.post(
-                f"{self.api_url}/change_refer",
-                json=data,
-                timeout=10
-            )
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.api_url}/change_refer",
+                    json=data,
+                    timeout=10.0
+                )
 
-            if response.status_code == 200:
-                # Update local defaults
-                self.default_refer_wav = refer_wav_path
-                self.default_refer_text = prompt_text
-                self.default_refer_language = prompt_language
-                logger.info("Default reference audio changed successfully")
-                return True
-            else:
-                logger.error(f"Failed to change default reference: {response.text}")
-                return False
+                if response.status_code == 200:
+                    # Update local defaults
+                    self.default_refer_wav = refer_wav_path
+                    self.default_refer_text = prompt_text
+                    self.default_refer_language = prompt_language
+                    logger.info("Default reference audio changed successfully")
+                    return True
+                else:
+                    logger.error(f"Failed to change default reference: {response.text}")
+                    return False
 
         except Exception as e:
             logger.error(f"Error changing default reference: {e}")

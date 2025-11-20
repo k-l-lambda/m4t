@@ -737,7 +737,7 @@ async def voice_clone_endpoint(
         cloner = get_voice_cloner()
 
         # Check if service is available
-        if not cloner.is_available():
+        if not await cloner.is_available():
             raise HTTPException(
                 status_code=503,
                 detail=create_error_response(
@@ -752,7 +752,7 @@ async def voice_clone_endpoint(
         audio_bytes = await audio.read()
 
         # Perform voice cloning
-        result_audio = cloner.clone_voice_from_bytes(
+        result_audio = await cloner.clone_voice_from_bytes(
             text=text,
             text_language=text_language,
             refer_audio_bytes=audio_bytes,
