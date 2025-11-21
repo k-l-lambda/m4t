@@ -695,7 +695,8 @@ async def voice_clone_endpoint(
     text_language: str = Form(..., description="Language of the text"),
     prompt_text: str = Form(..., description="Text content of reference audio"),
     prompt_language: str = Form(..., description="Language of reference audio"),
-    cut_punc: Optional[str] = Form(None, description="Text splitting punctuation")
+    cut_punc: Optional[str] = Form(None, description="Text splitting punctuation"),
+    seed: int = Form(-1, description="Random seed for reproducibility (-1 for random, 0-1000000 for fixed seed)")
 ):
     """
     Voice cloning endpoint using GPT-SoVITS (Direct Python Integration)
@@ -712,6 +713,7 @@ async def voice_clone_endpoint(
     - **prompt_text**: Transcription of the reference audio
     - **prompt_language**: Language code (SeamlessM4T codes like 'eng', 'cmn', 'jpn' or GPT-SoVITS codes like 'en', 'zh', 'ja')
     - **cut_punc**: Optional punctuation marks for text segmentation
+    - **seed**: Random seed for reproducibility (-1 for random, 0-1000000 for fixed seed, default: -1)
 
     **Returns:**
     - **output_audio_base64**: Generated audio in base64 encoding
@@ -721,20 +723,29 @@ async def voice_clone_endpoint(
     **Example:**
     ```bash
     # Using SeamlessM4T language codes
-    curl -X POST "http://localhost:8000/v1/voice-clone" \\
-      -F "audio=@reference.wav" \\
-      -F "text=Hello, this is a test." \\
-      -F "text_language=eng" \\
-      -F "prompt_text=This is the reference audio." \\
+    curl -X POST "http://localhost:8000/v1/voice-clone" \
+      -F "audio=@reference.wav" \
+      -F "text=Hello, this is a test." \
+      -F "text_language=eng" \
+      -F "prompt_text=This is the reference audio." \
       -F "prompt_language=eng"
 
     # Using GPT-SoVITS language codes (also supported)
-    curl -X POST "http://localhost:8000/v1/voice-clone" \\
-      -F "audio=@reference.wav" \\
-      -F "text=你好，这是一个测试。" \\
-      -F "text_language=zh" \\
-      -F "prompt_text=This is the reference audio." \\
+    curl -X POST "http://localhost:8000/v1/voice-clone" \
+      -F "audio=@reference.wav" \
+      -F "text=你好，这是一个测试。" \
+      -F "text_language=zh" \
+      -F "prompt_text=This is the reference audio." \
       -F "prompt_language=en"
+
+    # With fixed seed for reproducibility
+    curl -X POST "http://localhost:8000/v1/voice-clone" \
+      -F "audio=@reference.wav" \
+      -F "text=Hello, this is a test." \
+      -F "text_language=eng" \
+      -F "prompt_text=This is the reference audio." \
+      -F "prompt_language=eng" \
+      -F "seed=42"
     ```
 
     **Notes:**
@@ -742,6 +753,7 @@ async def voice_clone_endpoint(
     - Uses direct Python integration (no external GPT-SoVITS service needed)
     - Reference audio should be clear and noise-free for best results
     - Longer reference audio (10-30 seconds) generally produces better quality
+    - Set seed to a fixed value (e.g., 42) for reproducible results, or -1 for random generation
     """
     import time
     import soundfile as sf
@@ -766,7 +778,7 @@ async def voice_clone_endpoint(
         gptsovits_prompt_lang = map_seamless_to_gptsovits_lang(prompt_language)
 
         logger.info(f"Voice cloning: text='{text[:50]}...', text_lang={text_language}->{gptsovits_text_lang}, "
-                   f"prompt_lang={prompt_language}->{gptsovits_prompt_lang}, ref_audio={temp_audio_path}")
+                   f"prompt_lang={prompt_language}->{gptsovits_prompt_lang}, ref_audio={temp_audio_path}, seed={seed}")
 
         # Perform voice cloning using local GPT-SoVITS
         # Balanced parameters for stable generation with good quality
@@ -780,7 +792,8 @@ async def voice_clone_endpoint(
             top_p=0.7,
             temperature=0.5,
             speed=1.0,
-            spk="default"
+            spk="default",
+            seed=seed
         )
 
         if result_audio is None:

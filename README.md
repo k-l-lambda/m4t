@@ -444,6 +444,16 @@ curl -s -X POST "http://localhost:8000/v1/voice-clone" \
   -F "prompt_text=Original English text from reference" \
   -F "prompt_language=eng" \
   | jq -r '.output_audio_base64' | base64 -d > chinese_cloned.wav
+
+# With fixed seed for reproducible results
+curl -s -X POST "http://localhost:8000/v1/voice-clone" \
+  -F "audio=@reference_audio.wav" \
+  -F "text=Hello, this is a test." \
+  -F "text_language=eng" \
+  -F "prompt_text=Original text from reference audio" \
+  -F "prompt_language=eng" \
+  -F "seed=42" \
+  | jq -r '.output_audio_base64' | base64 -d > reproducible_voice.wav
 ```
 
 **Parameters:**
@@ -455,6 +465,9 @@ curl -s -X POST "http://localhost:8000/v1/voice-clone" \
 - `prompt_text`: Transcription of the reference audio (what is being said)
 - `prompt_language`: Language of the reference audio (supports both code formats)
 - `cut_punc` (optional): Punctuation for text segmentation
+- `seed` (optional): Random seed for reproducibility
+  - `-1` (default): Random generation (different result each time)
+  - `0-1000000`: Fixed seed for reproducible results (same result with same seed)
 
 **Response:**
 ```json
@@ -480,6 +493,9 @@ curl -s -X POST "http://localhost:8000/v1/voice-clone" \
 - Longer reference audio (10-30 seconds) generally produces better quality
 - The cloned voice will maintain the speaker's characteristics but speak the new text
 - GPU recommended for faster processing (uses ~4GB VRAM)
+- **Reproducibility**: Set `seed` parameter to a fixed value (e.g., 42) for reproducible results across multiple runs
+  - Useful for A/B testing, debugging, or when consistent output is needed
+  - Use default `-1` for natural variety in voice generation
 
 ### Python Client Example
 

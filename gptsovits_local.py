@@ -167,6 +167,35 @@ class GPTSoVITSLocal:
 
         logger.info(f"Speaker '{spk_name}' initialized with GPT and SoVITS models")
 
+    def _set_seed(self, seed: int):
+        """
+        Set random seed for reproducible generation.
+
+        This sets seeds for:
+        - Python's random module
+        - NumPy
+        - PyTorch (CPU and CUDA)
+        - PYTHONHASHSEED environment variable
+
+        Args:
+            seed: Random seed value (if -1, generates random seed)
+        """
+        import random
+        import numpy as np
+        import os
+
+        if seed == -1:
+            seed = random.randint(0, 1000000)
+
+        seed = int(seed)
+        random.seed(seed)
+        os.environ["PYTHONHASHSEED"] = str(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+
+        logger.debug(f"Random seed set to: {seed}")
+
     def generate_speech(
         self,
         text: str,
@@ -178,7 +207,8 @@ class GPTSoVITSLocal:
         top_p: float = 0.6,
         temperature: float = 0.6,
         speed: float = 1.0,
-        spk: str = "default"
+        spk: str = "default",
+        seed: int = -1
     ) -> Optional[bytes]:
         """
         Generate speech audio from text using voice cloning.
@@ -195,6 +225,7 @@ class GPTSoVITSLocal:
             top_k, top_p, temperature: Sampling parameters
             speed: Speech speed multiplier
             spk: Speaker name (default: "default")
+            seed: Random seed for reproducibility (-1 for random, 0-1000000 for fixed)
 
         Returns:
             WAV audio bytes or None if generation failed
@@ -202,6 +233,11 @@ class GPTSoVITSLocal:
         try:
             if not GPTSoVITSLocal._initialized:
                 raise RuntimeError("GPTSoVITS not initialized! Call __init__() first.")
+
+            # Set random seed if specified
+            if seed != -1:
+                self._set_seed(seed)
+                logger.info(f"Set random seed to: {seed}")
 
             logger.info(f"Generating speech: '{text[:50]}...' ({text_language})")
 
