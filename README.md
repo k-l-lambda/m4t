@@ -349,6 +349,7 @@ Clone a speaker's voice from a reference audio and generate speech with the same
 **Features:**
 - Direct Python integration (no external service needed)
 - Supports multiple languages: Chinese (zh), English (en), Japanese (ja), Korean (ko), etc.
+- **Automatic language code mapping**: Accepts both SeamlessM4T codes (eng, cmn, jpn) and GPT-SoVITS codes (en, zh, ja)
 - High-quality voice cloning using GPT-SoVITS
 - Auto-downloads language detection models on first use
 
@@ -370,7 +371,16 @@ On first use with Chinese text, fast-langdetect will automatically download a 12
 **Example (save directly to WAV file):**
 
 ```bash
-# English text with English reference audio
+# Using SeamlessM4T language codes (eng, cmn, jpn)
+curl -s -X POST "http://localhost:8000/v1/voice-clone" \
+  -F "audio=@reference_audio.wav" \
+  -F "text=Hello, this is a voice cloning test." \
+  -F "text_language=eng" \
+  -F "prompt_text=Original text from reference audio" \
+  -F "prompt_language=eng" \
+  | jq -r '.output_audio_base64' | base64 -d > cloned_voice.wav
+
+# Using GPT-SoVITS language codes (en, zh, ja) - also supported
 curl -s -X POST "http://localhost:8000/v1/voice-clone" \
   -F "audio=@reference_audio.wav" \
   -F "text=Hello, this is a voice cloning test." \
@@ -383,18 +393,20 @@ curl -s -X POST "http://localhost:8000/v1/voice-clone" \
 curl -s -X POST "http://localhost:8000/v1/voice-clone" \
   -F "audio=@reference_audio.wav" \
   -F "text=你好，这是一个中文语音克隆测试。" \
-  -F "text_language=zh" \
+  -F "text_language=cmn" \
   -F "prompt_text=Original English text from reference" \
-  -F "prompt_language=en" \
+  -F "prompt_language=eng" \
   | jq -r '.output_audio_base64' | base64 -d > chinese_cloned.wav
 ```
 
 **Parameters:**
 - `audio`: Reference audio file (WAV format recommended, 5-30 seconds)
 - `text`: Text to synthesize in the target language
-- `text_language`: Language code - `zh` (Chinese), `en` (English), `ja` (Japanese), `ko` (Korean)
+- `text_language`: Language code - Supports both:
+  - SeamlessM4T codes: `eng` (English), `cmn` (Chinese), `jpn` (Japanese), `kor` (Korean)
+  - GPT-SoVITS codes: `en` (English), `zh` (Chinese), `ja` (Japanese), `ko` (Korean)
 - `prompt_text`: Transcription of the reference audio (what is being said)
-- `prompt_language`: Language of the reference audio
+- `prompt_language`: Language of the reference audio (supports both code formats)
 - `cut_punc` (optional): Punctuation for text segmentation
 
 **Response:**

@@ -27,6 +27,7 @@ from config_m4t import (
     TASK_S2ST,
     TASK_ASR,
     TASK_T2TT,
+    map_seamless_to_gptsovits_lang,
 )
 from models import get_model
 from voice_detector import get_vad
@@ -707,9 +708,9 @@ async def voice_clone_endpoint(
     **Parameters:**
     - **audio**: Reference audio file (WAV format recommended)
     - **text**: Text to synthesize in the target language
-    - **text_language**: Language code for the text (zh, en, ja, ko, etc.)
+    - **text_language**: Language code (SeamlessM4T codes like 'eng', 'cmn', 'jpn' or GPT-SoVITS codes like 'en', 'zh', 'ja')
     - **prompt_text**: Transcription of the reference audio
-    - **prompt_language**: Language code of the reference audio
+    - **prompt_language**: Language code (SeamlessM4T codes like 'eng', 'cmn', 'jpn' or GPT-SoVITS codes like 'en', 'zh', 'ja')
     - **cut_punc**: Optional punctuation marks for text segmentation
 
     **Returns:**
@@ -719,15 +720,25 @@ async def voice_clone_endpoint(
 
     **Example:**
     ```bash
+    # Using SeamlessM4T language codes
     curl -X POST "http://localhost:8000/v1/voice-clone" \\
       -F "audio=@reference.wav" \\
       -F "text=Hello, this is a test." \\
-      -F "text_language=en" \\
+      -F "text_language=eng" \\
+      -F "prompt_text=This is the reference audio." \\
+      -F "prompt_language=eng"
+
+    # Using GPT-SoVITS language codes (also supported)
+    curl -X POST "http://localhost:8000/v1/voice-clone" \\
+      -F "audio=@reference.wav" \\
+      -F "text=你好，这是一个测试。" \\
+      -F "text_language=zh" \\
       -F "prompt_text=This is the reference audio." \\
       -F "prompt_language=en"
     ```
 
     **Notes:**
+    - Automatically maps SeamlessM4T language codes (eng, cmn, jpn) to GPT-SoVITS codes (en, zh, ja)
     - Uses direct Python integration (no external GPT-SoVITS service needed)
     - Reference audio should be clear and noise-free for best results
     - Longer reference audio (10-30 seconds) generally produces better quality
@@ -750,19 +761,24 @@ async def voice_clone_endpoint(
             temp_audio.write(audio_bytes)
             temp_audio_path = temp_audio.name
 
-        logger.info(f"Voice cloning: text='{text[:50]}...', text_lang={text_language}, "
-                   f"prompt_lang={prompt_language}, ref_audio={temp_audio_path}")
+        # Map SeamlessM4T language codes to GPT-SoVITS codes
+        gptsovits_text_lang = map_seamless_to_gptsovits_lang(text_language)
+        gptsovits_prompt_lang = map_seamless_to_gptsovits_lang(prompt_language)
+
+        logger.info(f"Voice cloning: text='{text[:50]}...', text_lang={text_language}->{gptsovits_text_lang}, "
+                   f"prompt_lang={prompt_language}->{gptsovits_prompt_lang}, ref_audio={temp_audio_path}")
 
         # Perform voice cloning using local GPT-SoVITS
+        # Balanced parameters for stable generation with good quality
         result_audio = gptsovits.generate_speech(
             text=text,
-            text_language=text_language,
+            text_language=gptsovits_text_lang,
             ref_wav_path=temp_audio_path,
             prompt_text=prompt_text,
-            prompt_language=prompt_language,
-            top_k=15,
-            top_p=0.6,
-            temperature=0.6,
+            prompt_language=gptsovits_prompt_lang,
+            top_k=12,
+            top_p=0.7,
+            temperature=0.5,
             speed=1.0,
             spk="default"
         )

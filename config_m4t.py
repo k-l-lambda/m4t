@@ -66,6 +66,51 @@ SUPPORTED_LANGUAGES: Dict[str, str] = {
     "fas": "Persian",
 }
 
+# Language code mapping: SeamlessM4T -> GPT-SoVITS
+# GPT-SoVITS supports: en, zh, ja, ko, yue, all_zh, all_ja
+SEAMLESS_TO_GPTSOVITS_LANG_MAP: Dict[str, str] = {
+    "eng": "en",           # English
+    "cmn": "zh",           # Chinese (Simplified) -> Chinese
+    "cmn_Hant": "zh",      # Chinese (Traditional) -> Chinese
+    "yue": "yue",          # Cantonese (Traditional)
+    "jpn": "ja",           # Japanese
+    "kor": "ko",           # Korean
+    "fra": "en",           # French -> English (fallback)
+    "deu": "en",           # German -> English (fallback)
+    "spa": "en",           # Spanish -> English (fallback)
+    "ita": "en",           # Italian -> English (fallback)
+    "por": "en",           # Portuguese -> English (fallback)
+    "rus": "en",           # Russian -> English (fallback)
+    "hin": "en",           # Hindi -> English (fallback)
+    "tha": "en",           # Thai -> English (fallback)
+    "vie": "en",           # Vietnamese -> English (fallback)
+    "ind": "en",           # Indonesian -> English (fallback)
+    "msa": "en",           # Malay -> English (fallback)
+    "tgl": "en",           # Tagalog -> English (fallback)
+    "ara": "en",           # Arabic -> English (fallback)
+    "heb": "en",           # Hebrew -> English (fallback)
+    "tur": "en",           # Turkish -> English (fallback)
+    "fas": "en",           # Persian -> English (fallback)
+}
+
+def map_seamless_to_gptsovits_lang(seamless_lang: str) -> str:
+    """
+    Map SeamlessM4T language code to GPT-SoVITS language code
+
+    Args:
+        seamless_lang: SeamlessM4T language code (e.g., 'eng', 'cmn', 'jpn')
+
+    Returns:
+        GPT-SoVITS language code (e.g., 'en', 'zh', 'ja')
+        Returns the input unchanged if it's already a GPT-SoVITS code
+    """
+    # If already a GPT-SoVITS code, return as-is
+    if seamless_lang in ["en", "zh", "ja", "ko", "yue", "all_zh", "all_ja"]:
+        return seamless_lang
+
+    # Map SeamlessM4T code to GPT-SoVITS code
+    return SEAMLESS_TO_GPTSOVITS_LANG_MAP.get(seamless_lang, seamless_lang)
+
 # Task Types
 TASK_S2TT = "s2tt"  # Speech-to-Text Translation
 TASK_S2ST = "s2st"  # Speech-to-Speech Translation
