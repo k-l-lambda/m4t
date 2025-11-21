@@ -136,6 +136,17 @@ class SeparatorResponse(BaseModel):
     separator_available: bool
 
 
+class AudioSplitResponse(BaseModel):
+    """Audio split response with both vocals and accompaniment"""
+    task: str = "audio_split"
+    input_duration: float
+    vocals_audio_base64: str = Field(..., description="Base64-encoded vocals audio (WAV)")
+    accompaniment_audio_base64: str = Field(..., description="Base64-encoded accompaniment audio (WAV)")
+    sample_rate: int
+    processing_time: float
+    separator_available: bool
+
+
 # ==================== Helper Functions ====================
 
 def create_error_response(
@@ -686,6 +697,108 @@ class VoiceCloneResponse(BaseModel):
     output_duration: float
     processing_time: float
     service_available: bool
+
+
+@app.post("/v1/audio-split", response_model=AudioSplitResponse)
+async def audio_split_endpoint(
+    audio: UploadFile = File(..., description="Audio file to split into vocals and accompaniment")
+):
+    """
+    Audio Source Separation - Split audio into vocals and accompaniment
+
+    Separates an audio file into two streams:
+    - Vocals: Human voice/singing
+    - Accompaniment: Background music and other sounds
+
+    Uses Spleeter's 2-stem model for separation.
+
+    **Example Usage:**
+    ```bash
+    curl -X POST "http://localhost:8000/v1/audio-split" \\
+      -F "audio=@song.wav" \\
+      -o output.json
+
+    # Extract vocals
+    jq -r '.vocals_audio_base64' output.json | base64 -d > vocals.wav
+
+    # Extract accompaniment
+    jq -r '.accompaniment_audio_base64' output.json | base64 -d > accompaniment.wav
+    ```
+
+    **Returns:**
+    - vocals_audio_base64: Base64-encoded vocals audio (WAV format)
+    - accompaniment_audio_base64: Base64-encoded accompaniment audio (WAV format)
+    - sample_rate: Sample rate of both audio streams
+    - processing_time: Time taken to process
+    """
+    import time
+    start_time = time.time()
+
+    try:
+        # Check if separator is available
+        separator = get_separator()
+        if not separator.is_available():
+            raise HTTPException(
+                status_code=503,
+                detail=create_error_response(
+                    "SeparatorUnavailable",
+                    "Audio separation service is not available",
+                    "Spleeter is not installed or failed to load",
+                    "Install spleeter: pip install spleeter"
+                )
+            )
+
+        # Read audio file
+        audio_data = await read_audio_file(audio)
+        logger.info(f"Processing audio split for file: {audio.filename} ({len(audio_data)} bytes)")
+
+        # Get input duration
+        import soundfile as sf
+        input_duration = len(sf.read(io.BytesIO(audio_data))[0]) / sf.read(io.BytesIO(audio_data))[1]
+
+        # Separate audio into vocals and accompaniment
+        vocals_array, accompaniment_array, sr = separator.separate_audio_streams(audio_data, sample_rate=16000)
+
+        # Convert arrays to WAV bytes
+        vocals_buffer = io.BytesIO()
+        accompaniment_buffer = io.BytesIO()
+
+        sf.write(vocals_buffer, vocals_array, sr, format='WAV')
+        sf.write(accompaniment_buffer, accompaniment_array, sr, format='WAV')
+
+        vocals_buffer.seek(0)
+        accompaniment_buffer.seek(0)
+
+        # Encode to base64
+        vocals_base64 = base64.b64encode(vocals_buffer.read()).decode('utf-8')
+        accompaniment_base64 = base64.b64encode(accompaniment_buffer.read()).decode('utf-8')
+
+        processing_time = time.time() - start_time
+
+        logger.info(f"Audio split completed: {input_duration:.2f}s audio, {processing_time:.2f}s processing")
+
+        return AudioSplitResponse(
+            input_duration=input_duration,
+            vocals_audio_base64=vocals_base64,
+            accompaniment_audio_base64=accompaniment_base64,
+            sample_rate=sr,
+            processing_time=processing_time,
+            separator_available=True
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in audio split: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=create_error_response(
+                "AudioSplitError",
+                "Audio separation failed",
+                str(e),
+                "Check audio file format and Spleeter installation"
+            )
+        )
 
 
 @app.post("/v1/voice-clone", response_model=VoiceCloneResponse)

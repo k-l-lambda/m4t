@@ -45,6 +45,106 @@ class AudioSeparator:
         """Check if Spleeter is available"""
         return self._spleeter_available
 
+    def separate_audio_streams(
+        self,
+        audio_data: bytes,
+        sample_rate: int = 16000
+    ) -> Tuple[np.ndarray, np.ndarray, int]:
+        """
+        Separate audio into vocals and accompaniment streams
+
+        Args:
+            audio_data: Audio data in bytes
+            sample_rate: Target sample rate
+
+        Returns:
+            Tuple of (vocals_array, accompaniment_array, sample_rate)
+
+        Raises:
+            RuntimeError: If Spleeter is not available
+        """
+        if not self._spleeter_available:
+            raise RuntimeError(
+                "Spleeter is not available. Install with: pip install spleeter"
+            )
+
+        try:
+            # Save audio bytes to temporary file
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_input:
+                tmp_input_path = tmp_input.name
+                tmp_input.write(audio_data)
+
+            # Create temporary output directory
+            tmp_output_dir = tempfile.mkdtemp()
+
+            try:
+                # Separate audio
+                logger.info("Separating vocals and accompaniment...")
+                self.separator.separate_to_file(
+                    tmp_input_path,
+                    tmp_output_dir,
+                    codec='wav'
+                )
+
+                # Read vocals and accompaniment files
+                import soundfile as sf
+                input_basename = os.path.splitext(os.path.basename(tmp_input_path))[0]
+                vocals_path = os.path.join(tmp_output_dir, input_basename, 'vocals.wav')
+                accompaniment_path = os.path.join(tmp_output_dir, input_basename, 'accompaniment.wav')
+
+                vocals_array, sr_vocals = sf.read(vocals_path, dtype='float32')
+                accompaniment_array, sr_accomp = sf.read(accompaniment_path, dtype='float32')
+
+                # Resample if needed
+                if sr_vocals != sample_rate:
+                    import torchaudio
+                    import torch
+                    vocals_tensor = torch.from_numpy(vocals_array)
+                    if vocals_tensor.dim() == 1:
+                        vocals_tensor = vocals_tensor.unsqueeze(0)
+                    elif vocals_tensor.dim() == 2:
+                        vocals_tensor = vocals_tensor.T  # [channels, samples]
+
+                    resampler = torchaudio.transforms.Resample(sr_vocals, sample_rate)
+                    vocals_tensor = resampler(vocals_tensor)
+
+                    if vocals_tensor.shape[0] == 1:
+                        vocals_array = vocals_tensor.squeeze().numpy()
+                    else:
+                        vocals_array = vocals_tensor.T.numpy()  # [samples, channels]
+
+                if sr_accomp != sample_rate:
+                    import torchaudio
+                    import torch
+                    accomp_tensor = torch.from_numpy(accompaniment_array)
+                    if accomp_tensor.dim() == 1:
+                        accomp_tensor = accomp_tensor.unsqueeze(0)
+                    elif accomp_tensor.dim() == 2:
+                        accomp_tensor = accomp_tensor.T  # [channels, samples]
+
+                    resampler = torchaudio.transforms.Resample(sr_accomp, sample_rate)
+                    accomp_tensor = resampler(accomp_tensor)
+
+                    if accomp_tensor.shape[0] == 1:
+                        accompaniment_array = accomp_tensor.squeeze().numpy()
+                    else:
+                        accompaniment_array = accomp_tensor.T.numpy()  # [samples, channels]
+
+                logger.info("Audio separation completed successfully")
+                return vocals_array, accompaniment_array, sample_rate
+
+            finally:
+                # Clean up temporary files
+                import shutil
+                if os.path.exists(tmp_input_path):
+                    os.unlink(tmp_input_path)
+                if os.path.exists(tmp_output_dir):
+                    shutil.rmtree(tmp_output_dir)
+
+        except Exception as e:
+            logger.error(f"Error separating audio: {e}")
+            raise
+
     def separate_vocals_from_bytes(
         self,
         audio_data: bytes,

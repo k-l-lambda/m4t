@@ -4,7 +4,7 @@ Multilingual speech and text translation API using Meta's **SeamlessM4T v2** mod
 
 ## Features
 
-- **8 Translation & Speech Tasks:**
+- **9 Translation & Speech Tasks:**
   - 🎤→📝 **S2TT**: Speech-to-Text Translation (e.g., Japanese audio → Chinese text)
   - 🎤→🔊 **S2ST**: Speech-to-Speech Translation (e.g., Japanese audio → Chinese audio)
   - 🎤→📝 **ASR**: Automatic Speech Recognition (e.g., Japanese audio → Japanese text)
@@ -13,6 +13,7 @@ Multilingual speech and text translation API using Meta's **SeamlessM4T v2** mod
   - 🎙️ **VAD**: Voice Activity Detection (detect speech segments in audio)
   - 🎵 **Vocal Separation**: Extract vocals from background music (optional Spleeter)
   - 🎭 **Voice Cloning**: Clone speaker voice with GPT-SoVITS (direct Python integration)
+  - 🎼 **Audio Split**: Split audio into vocals + accompaniment (two separate streams)
 
 - **Wide Language Support:** 101 languages for speech, 96 for text
 - **High Quality:** 2.3B parameter model with state-of-the-art translation quality
@@ -387,7 +388,95 @@ curl -X POST "http://localhost:8000/v1/speech-to-speech-translation" \
 
 If Spleeter is not installed, the parameter is ignored and processing continues without separation (with a warning).
 
-### 8. Voice Cloning (GPT-SoVITS)
+### 8. Audio Split (Source Separation)
+
+**Endpoint:** `POST /v1/audio-split`
+
+Split audio into two separate streams: vocals and accompaniment (background music).
+
+**Use cases:**
+- Extract clean vocals for further processing
+- Create karaoke versions (accompaniment only)
+- Remix or mashup production
+- Audio analysis and research
+
+**Note:** Requires Spleeter installation: `pip install spleeter`
+
+**Basic usage:**
+
+```bash
+# Split audio and save both streams
+curl -X POST "http://localhost:8000/v1/audio-split" \
+  -F "audio=@song.wav" \
+  -o output.json
+
+# Extract vocals only
+jq -r '.vocals_audio_base64' output.json | base64 -d > vocals.wav
+
+# Extract accompaniment only
+jq -r '.accompaniment_audio_base64' output.json | base64 -d > accompaniment.wav
+
+# Extract both streams in one command
+cat output.json | jq -r '.vocals_audio_base64' | base64 -d > vocals.wav && \
+cat output.json | jq -r '.accompaniment_audio_base64' | base64 -d > accompaniment.wav
+```
+
+**One-liner to extract both streams:**
+
+```bash
+curl -s -X POST "http://localhost:8000/v1/audio-split" \
+  -F "audio=@song.wav" \
+  | tee >(jq -r '.vocals_audio_base64' | base64 -d > vocals.wav) \
+  | jq -r '.accompaniment_audio_base64' | base64 -d > accompaniment.wav
+```
+
+**Response:**
+
+```json
+{
+  "task": "audio_split",
+  "input_duration": 5.2,
+  "vocals_audio_base64": "UklGRiQAAABXQVZFZm10...",
+  "accompaniment_audio_base64": "UklGRkgBAABXQVZFZm10...",
+  "sample_rate": 16000,
+  "processing_time": 3.45,
+  "separator_available": true
+}
+```
+
+**Python example:**
+
+```python
+import requests
+import base64
+
+# Split audio
+with open("song.wav", "rb") as f:
+    response = requests.post(
+        "http://localhost:8000/v1/audio-split",
+        files={"audio": f}
+    )
+
+result = response.json()
+
+# Save vocals
+with open("vocals.wav", "wb") as f:
+    f.write(base64.b64decode(result['vocals_audio_base64']))
+
+# Save accompaniment
+with open("accompaniment.wav", "wb") as f:
+    f.write(base64.b64decode(result['accompaniment_audio_base64']))
+
+print(f"Separated {result['input_duration']:.2f}s audio in {result['processing_time']:.2f}s")
+```
+
+**Performance:** ~0.6-0.7x real-time (5s audio processed in 3.5s on GPU)
+
+**Difference from `/v1/separate-vocals`:**
+- `/v1/separate-vocals`: Returns vocals only (single stream)
+- `/v1/audio-split`: Returns BOTH vocals and accompaniment (two streams)
+
+### 9. Voice Cloning (GPT-SoVITS)
 
 **Endpoint:** `POST /v1/voice-clone`
 
