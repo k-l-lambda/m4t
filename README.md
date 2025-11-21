@@ -34,21 +34,68 @@ pip install -r requirements.txt
 python server.py
 ```
 
-### Option 2: Docker
+### Option 2: Docker (with GPT-SoVITS integrated)
+
+**Latest version: v1.1.0** includes GPT-SoVITS voice cloning support built-in.
+
+#### Method 1: Auto-download models (easiest)
 
 ```bash
-# Using Docker Compose (recommended)
+# Build image with integrated GPT-SoVITS
+./build_docker.sh v1.1.0
+
+# Run container (models will download automatically on first start)
+docker run -d --name m4t-server \
+  --gpus all \
+  -p 8000:8000 \
+  kllambda/m4t:v1.1.0
+
+# First startup takes ~5-10 minutes to download models (~1.2 GB)
+# Subsequent starts are instant as models are cached in container
+docker logs -f m4t-server
+```
+
+#### Method 2: Volume-mount pretrained models (faster startup)
+
+```bash
+# If you already have pretrained models on host:
+docker run -d --name m4t-server \
+  --gpus all \
+  -p 8000:8000 \
+  -v /path/to/pretrained_models:/app/third_party/GPT-SoVITS/GPT_SoVITS/pretrained_models \
+  -e SKIP_MODEL_DOWNLOAD=true \
+  kllambda/m4t:v1.1.0
+
+# Example: Mount from host system
+# -v ~/work/hf-GPT-SoVITS:/app/third_party/GPT-SoVITS/GPT_SoVITS/pretrained_models
+```
+
+#### Method 3: Using Docker Compose (legacy)
+
+```bash
+# Using Docker Compose (without GPT-SoVITS)
 docker-compose up -d
 
 # Or using the script
 ./start_docker.sh
-
-# Or manually
-docker build -t seamless-m4t-api .
-docker run -d --gpus '"device=0"' -p 8000:8000 \
-  -v ~/.cache/huggingface:/root/.cache/huggingface \
-  seamless-m4t-api
 ```
+
+#### Model Files
+
+The container requires these GPT-SoVITS pretrained models (~1.2 GB total):
+
+**Core models** (required):
+- `s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt` (~155 MB) - GPT model
+- `s2G488k.pth` (~106 MB) - SoVITS generator
+- `s2D488k.pth` (~94 MB) - SoVITS discriminator
+- `chinese-hubert-base/` - Chinese HuBERT model
+- `chinese-roberta-wwm-ext-large/` - Chinese RoBERTa model
+
+**Optional** (v3 models):
+- `s1v3.ckpt` - GPT v3 model
+- `s2Gv3.pth` - SoVITS v3 generator
+
+Models are automatically downloaded from HuggingFace (`k-l-lambda/GPT-SoVITS-pretrained-models`) on first container start, or can be volume-mounted to skip download.
 
 ## Configuration
 

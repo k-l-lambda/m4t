@@ -1,0 +1,49 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment
+.env
+.env.local
+*.local
+
+# Git
+.git/
+.gitignore
+.gitmodules
+
+# Third party (we'll clone it fresh in Dockerfile)
+third_party/
+
+# Test files
+test_*.py
+examples/
+docs/
+
+# Development scripts
+start_dev.sh
+restart.sh
+commands.local.sh
+
+# Logs
+*.log
+logs/
