@@ -3,12 +3,18 @@ FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
 # Set working directory
 WORKDIR /app
 
+# Set timezone non-interactively to prevent build hang
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     libsndfile1 \
     ffmpeg \
     git \
     curl \
+    build-essential \
+    cmake \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements files
