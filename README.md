@@ -400,6 +400,11 @@ Split audio into two separate streams: vocals and accompaniment (background musi
 - Remix or mashup production
 - Audio analysis and research
 
+**Features:**
+- ✅ Automatic chunked processing for long audio files (>10 minutes)
+- ✅ No duration limit - processes audio of any length
+- ✅ GPU-accelerated separation using Spleeter's 2-stem model
+
 **Note:** Requires Spleeter installation: `pip install spleeter`
 
 **Basic usage:**
@@ -470,7 +475,9 @@ with open("accompaniment.wav", "wb") as f:
 print(f"Separated {result['input_duration']:.2f}s audio in {result['processing_time']:.2f}s")
 ```
 
-**Performance:** ~0.6-0.7x real-time (5s audio processed in 3.5s on GPU)
+**Performance:**
+- Short audio (<10 min): ~0.6-0.7x real-time (5s audio processed in 3.5s on GPU)
+- Long audio (>10 min): Processed in 5-minute chunks with automatic concatenation
 
 **Difference from `/v1/separate-vocals`:**
 - `/v1/separate-vocals`: Returns vocals only (single stream)
