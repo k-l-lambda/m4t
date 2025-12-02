@@ -42,8 +42,8 @@ class GPTSoVITSLocal:
         self,
         device: str = "cuda",
         is_half: bool = True,
-        gpt_path: str = "GPT_SoVITS/pretrained_models/s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt",
-        sovits_path: str = "GPT_SoVITS/pretrained_models/s2G488k.pth",
+        gpt_path: str = "GPT_SoVITS/pretrained_models/s1v3.ckpt",  # v3 model
+        sovits_path: str = "GPT_SoVITS/pretrained_models/s2Gv3.pth",  # v3 model
         cnhubert_base_path: str = "GPT_SoVITS/pretrained_models/chinese-hubert-base",
         bert_path: str = "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large"
     ):
