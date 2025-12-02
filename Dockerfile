@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
     cmake \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements files
@@ -34,6 +35,9 @@ RUN git clone https://github.com/k-l-lambda/GPT-SoVITS.git /app/third_party/GPT-
 
 # Install GPT-SoVITS dependencies
 RUN pip install --no-cache-dir -r /app/third_party/GPT-SoVITS/requirements.txt
+
+# Install v3 model dependencies (ONNX Runtime and OpenCC)
+RUN pip install --no-cache-dir onnxruntime==1.23.2 opencc-python-reimplemented==0.1.7
 
 # Copy application code
 COPY config_m4t.py models.py server.py gptsovits_local.py voice_cloner.py voice_detector.py audio_separator.py env_loader.py ./

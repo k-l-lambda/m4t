@@ -83,18 +83,27 @@ docker-compose up -d
 
 #### Model Files
 
-The container requires these GPT-SoVITS pretrained models (~1.2 GB total):
+The container includes both v1 and **v3 models** (~2.0 GB total):
 
-**Core models** (required):
-- `s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt` (~155 MB) - GPT model
-- `s2G488k.pth` (~106 MB) - SoVITS generator
-- `s2D488k.pth` (~94 MB) - SoVITS discriminator
+**v1 models** (baseline):
+- `s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt` (~155 MB) - GPT v1 model
+- `s2G488k.pth` (~106 MB) - SoVITS v1 generator
+- `s2D488k.pth` (~94 MB) - SoVITS v1 discriminator
+
+**v3 models** (improved quality, included by default):
+- `s1v3.ckpt` (~149 MB) - GPT v3 model with better duration control
+- `s2Gv3.pth` (~734 MB) - SoVITS v3 generator (7x larger, higher quality)
+- `G2PWModel/` (~562 MB) - G2PW ONNX model for advanced text processing
+
+**Shared models**:
 - `chinese-hubert-base/` - Chinese HuBERT model
-- `chinese-roberta-wwm-ext-large/` - Chinese RoBERTa model
+- `chinese-roberta-wwm-ext-large/` - Chinese RoBERTa model for tokenization
 
-**Optional** (v3 models):
-- `s1v3.ckpt` - GPT v3 model
-- `s2Gv3.pth` - SoVITS v3 generator
+**v3 Model Advantages**:
+- Better voice quality and naturalness
+- Improved pronunciation with ML-powered G2PW text processing
+- More stable voice characteristics across different texts
+- Better handling of Chinese text (tone and pronunciation)
 
 Models are automatically downloaded from HuggingFace (`k-l-lambda/GPT-SoVITS-pretrained-models`) on first container start, or can be volume-mounted to skip download.
 

@@ -21,7 +21,7 @@ fi
 # Verify critical models exist
 MODEL_DIR="/app/third_party/GPT-SoVITS/GPT_SoVITS/pretrained_models"
 if [ ! -f "$MODEL_DIR/s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt" ]; then
-    echo "❌ ERROR: GPT model not found!"
+    echo "❌ ERROR: GPT v1 model not found!"
     echo "   Expected: $MODEL_DIR/s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt"
     echo "   Either:"
     echo "   1. Remove SKIP_MODEL_DOWNLOAD environment variable to auto-download"
@@ -30,13 +30,32 @@ if [ ! -f "$MODEL_DIR/s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt" ]; then
 fi
 
 if [ ! -f "$MODEL_DIR/s2G488k.pth" ]; then
-    echo "❌ ERROR: SoVITS model not found!"
+    echo "❌ ERROR: SoVITS v1 model not found!"
     echo "   Expected: $MODEL_DIR/s2G488k.pth"
     exit 1
 fi
 
+if [ ! -f "$MODEL_DIR/s1v3.ckpt" ]; then
+    echo "❌ ERROR: GPT v3 model not found!"
+    echo "   Expected: $MODEL_DIR/s1v3.ckpt"
+    exit 1
+fi
+
+if [ ! -f "$MODEL_DIR/s2Gv3.pth" ]; then
+    echo "❌ ERROR: SoVITS v3 model not found!"
+    echo "   Expected: $MODEL_DIR/s2Gv3.pth"
+    exit 1
+fi
+
+G2PW_DIR="/app/third_party/GPT-SoVITS/GPT_SoVITS/text/G2PWModel"
+if [ ! -f "$G2PW_DIR/G2PWModel_1.1.onnx" ]; then
+    echo "❌ ERROR: G2PW ONNX model not found!"
+    echo "   Expected: $G2PW_DIR/G2PWModel_1.1.onnx"
+    exit 1
+fi
+
 echo ""
-echo "✓ All models verified"
+echo "✓ All models verified (v1 + v3)"
 echo ""
 echo "Step 2: Starting m4t API server..."
 echo "   Listening on: 0.0.0.0:8000"
